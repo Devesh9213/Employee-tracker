@@ -18,6 +18,30 @@ SPREADSHEET_ID = "1Pn9bMdHwK1OOvoNtsc_i3kIeuFahQixaM4bYKhQkMes"
 EMAIL_ADDRESS = st.secrets["EMAIL_ADDRESS"]
 EMAIL_PASSWORD = st.secrets["EMAIL_PASSWORD"]
 
+# === PAGE SETUP ===
+st.set_page_config(page_title="🌟 PixsEdit Employee Tracker", layout="centered")
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f6f9fc;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    }
+    .stButton>button {
+        border-radius: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: linear-gradient(90deg, #007cf0, #00dfd8);
+        color: white;
+        border: none;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("🕒 PixsEdit Employee Tracker")
+st.subheader("Luxury Interface ✨ with Live Dashboard")
+
+# === GOOGLE SHEETS ===
 def connect_to_google_sheets():
     spreadsheet = client.open_by_key(SPREADSHEET_ID)
     today = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -32,6 +56,9 @@ def connect_to_google_sheets():
     users_sheet = spreadsheet.worksheet("Registered Employees")
     return users_sheet, sheet
 
+sheet1, sheet2 = connect_to_google_sheets()
+
+# === FUNCTIONS ===
 def format_duration(minutes):
     hrs = int(minutes // 60)
     mins = int(minutes % 60)
@@ -76,23 +103,19 @@ def send_email_with_csv(to_email, file_path):
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
-# === STREAMLIT UI ===
-st.set_page_config(page_title="PixsEdit Employee Tracker", layout="centered")
-st.title("🕒 PixsEdit Employee Tracker")
+# === AUTH UI ===
+st.markdown("""<div class='main'>""", unsafe_allow_html=True)
 
-sheet1, sheet2 = connect_to_google_sheets()
+username = st.text_input("👤 Username")
+password = st.text_input("🔒 Password", type="password")
+col1, col2 = st.columns(2)
+login_btn = col1.button("🚪 Login")
+register_btn = col2.button("➕ Register")
 
 if 'user' not in st.session_state:
     st.session_state.user = None
 if 'row_index' not in st.session_state:
     st.session_state.row_index = None
-
-username = st.text_input("Username")
-password = st.text_input("Password", type="password")
-
-col1, col2 = st.columns(2)
-login_btn = col1.button("Login")
-register_btn = col2.button("Register")
 
 users = sheet1.get_all_values()[1:]
 user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
@@ -110,7 +133,6 @@ if login_btn:
     else:
         st.session_state.user = username
         rows = sheet2.get_all_values()
-        st.session_state.row_index = None
         for i, row in enumerate(rows[1:], start=2):
             if row[0] == username:
                 st.session_state.row_index = i
@@ -125,9 +147,9 @@ if login_btn:
             else:
                 st.info("Already logged in. Use logout when done.")
 
+# === ADMIN DASHBOARD ===
 if st.session_state.user == "admin":
     st.subheader("📊 Admin Dashboard")
-
     data = sheet2.get_all_values()
     headers = data[0] + ["Status"]
     table = []
@@ -143,7 +165,7 @@ if st.session_state.user == "admin":
         row[7] = status
         table.append(row)
 
-    st.dataframe([dict(zip(headers, row)) for row in table])
+    st.dataframe([dict(zip(headers, row)) for row in table], use_container_width=True)
 
     st.markdown("### 📤 Export & Email Report")
     if st.button("📥 Export as CSV"):
@@ -162,6 +184,7 @@ if st.session_state.user == "admin":
             except Exception as e:
                 st.error(f"Failed to send email: {e}")
 
+# === EMPLOYEE CONTROLS ===
 elif st.session_state.user:
     st.subheader(f"Welcome, {st.session_state.user}")
 
@@ -213,3 +236,5 @@ elif st.session_state.user:
             st.session_state.row_index = None
         else:
             st.error("You must login first.")
+
+st.markdown("""</div>""", unsafe_allow_html=True)
