@@ -7,6 +7,9 @@ from oauth2client.service_account import ServiceAccountCredentials
 import smtplib
 from email.message import EmailMessage
 import json
+from pathlib import Path
+import pandas as pd
+import plotly.express as px
 
 # === CONFIGURATION ===
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -18,9 +21,34 @@ SPREADSHEET_ID = "1Pn9bMdHwK1OOvoNtsc_i3kIeuFahQixaM4bYKhQkMes"
 EMAIL_ADDRESS = st.secrets["EMAIL_ADDRESS"]
 EMAIL_PASSWORD = st.secrets["EMAIL_PASSWORD"]
 
+AVATAR_DIR = Path("avatars")
+AVATAR_DIR.mkdir(exist_ok=True)
+
 # === PAGE SETUP ===
-st.set_page_config(page_title="🌟 PixsEdit Employee Tracker", layout="centered")
-st.markdown("""
+st.set_page_config(page_title="🌟 PixsEdit Employee Tracker", layout="wide")
+
+# === AUTO THEME BASED ON TIME ===
+current_hour = datetime.datetime.now().hour
+auto_dark = current_hour < 6 or current_hour >= 18
+st.sidebar.caption("🌓 Auto theme applied based on time of day")
+
+dark_mode = st.sidebar.toggle("🌙 Enable Dark Mode", value=auto_dark)
+
+if dark_mode:
+    st.markdown("""
+    <style>
+        body {
+            background-color: #1e1e1e;
+            color: #f5f5f5;
+        }
+        .stButton>button {
+            background-color: #333333 !important;
+            color: #ffffff !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
     <style>
     .main {
         background-color: #f6f9fc;
@@ -36,12 +64,12 @@ st.markdown("""
         border: none;
     }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 st.title("🕒 PixsEdit Employee Tracker")
 st.subheader("Luxury Interface ✨ with Live Dashboard")
 
-# === GOOGLE SHEETS ===
+# === GOOGLE SHEETS CONNECTION ===
 def connect_to_google_sheets():
     spreadsheet = client.open_by_key(SPREADSHEET_ID)
     today = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -58,7 +86,7 @@ def connect_to_google_sheets():
 
 sheet1, sheet2 = connect_to_google_sheets()
 
-# === FUNCTIONS ===
+# === FORMATTERS & UTILITIES ===
 def format_duration(minutes):
     hrs = int(minutes // 60)
     mins = int(minutes % 60)
@@ -103,9 +131,30 @@ def send_email_with_csv(to_email, file_path):
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
-# === AUTH UI ===
-st.markdown("""<div class='main'>""", unsafe_allow_html=True)
+# === AVATAR SYSTEM ===
+if 'user' not in st.session_state or st.session_state.user is None:
+    uploaded_avatar = st.sidebar.file_uploader("Upload your Avatar (optional)", type=["jpg", "jpeg", "png"])
+    if uploaded_avatar:
+        temp_name = "temp_avatar.png"
+        temp_path = AVATAR_DIR / temp_name
+        with open(temp_path, "wb") as f:
+            f.write(uploaded_avatar.read())
+        st.sidebar.image(str(temp_path), width=100, caption="Preview")
 
+elif st.session_state.user:
+    avatar_path = AVATAR_DIR / f"{st.session_state.user}.png"
+    if avatar_path.exists():
+        st.sidebar.image(str(avatar_path), width=100, caption="Welcome Back ✨")
+
+    new_avatar = st.sidebar.file_uploader("Update your Avatar (optional)", type=["jpg", "jpeg", "png"])
+    if new_avatar:
+        with open(avatar_path, "wb") as f:
+            f.write(new_avatar.read())
+        st.sidebar.success("Avatar updated!")
+        st.experimental_rerun()
+
+# === LOGIN UI ===
+st.markdown("""<div class='main'>""", unsafe_allow_html=True)
 username = st.text_input("👤 Username")
 password = st.text_input("🔒 Password", type="password")
 col1, col2 = st.columns(2)
@@ -147,29 +196,36 @@ if login_btn:
             else:
                 st.info("Already logged in. Use logout when done.")
 
-# === ADMIN DASHBOARD ===
+# === DASHBOARD ===
+today = datetime.datetime.now().strftime('%Y-%m-%d')
+sheet_name = f"Daily Logs {today}"
+spreadsheet = client.open_by_key(SPREADSHEET_ID)
+sheet = spreadsheet.worksheet(sheet_name)
+data = sheet.get_all_records()
+df = pd.DataFrame(data)
+
 if st.session_state.user == "admin":
     st.subheader("📊 Admin Dashboard")
-    data = sheet2.get_all_values()
-    headers = data[0] + ["Status"]
-    table = []
+    headers = data[0].keys()
+    st.dataframe(df, use_container_width=True)
 
-    for i, row in enumerate(data[1:], start=2):
-        while len(row) < 8:
-            row.append("")
-        status = evaluate_status(row[5], row[6])
-        try:
-            sheet2.update_cell(i, 8, status)
-        except:
-            pass
-        row[7] = status
-        table.append(row)
+    st.markdown("## 📈 Daily Analytics")
+    col1, col2 = st.columns(2)
 
-    st.dataframe([dict(zip(headers, row)) for row in table], use_container_width=True)
+    with col1:
+        if not df.empty:
+            bar_fig = px.bar(df, x="Employee Name", y="Total Work Time", title="Work Duration per Employee", color="Status")
+            st.plotly_chart(bar_fig, use_container_width=True)
+
+    with col2:
+        if not df.empty:
+            status_count = df["Status"].value_counts().reset_index()
+            pie_fig = px.pie(status_count, names="index", values="Status", title="Work Completion Status")
+            st.plotly_chart(pie_fig, use_container_width=True)
 
     st.markdown("### 📤 Export & Email Report")
     if st.button("📥 Export as CSV"):
-        csv_file = export_to_csv(sheet2)
+        csv_file = export_to_csv(sheet)
         st.success(f"Exported: {csv_file}")
 
     email_to = st.text_input("Send report to email:")
@@ -178,13 +234,13 @@ if st.session_state.user == "admin":
             st.warning("Enter a valid email.")
         else:
             try:
-                file_path = export_to_csv(sheet2)
+                file_path = export_to_csv(sheet)
                 send_email_with_csv(email_to, file_path)
                 st.success("Report emailed successfully.")
             except Exception as e:
                 st.error(f"Failed to send email: {e}")
 
-# === EMPLOYEE CONTROLS ===
+# === EMPLOYEE TRACKING ===
 elif st.session_state.user:
     st.subheader(f"Welcome, {st.session_state.user}")
 
