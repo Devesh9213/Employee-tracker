@@ -11,11 +11,43 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 from streamlit_js_eval import streamlit_js_eval
+from typing import Optional, Dict, Any, Tuple, List
+from dataclasses import dataclass
+
+# ====================
+# DATA CLASSES
+# ====================
+@dataclass
+class EmployeeRecord:
+    name: str
+    login_time: Optional[str] = None
+    logout_time: Optional[str] = None
+    break_start: Optional[str] = None
+    break_end: Optional[str] = None
+    break_duration: Optional[str] = None
+    work_time: Optional[str] = None
+    status: Optional[str] = None
+    overtime: Optional[str] = None
+
+@dataclass
+class AppConfig:
+    spreadsheet_id: str
+    email_address: str
+    email_password: str
+    client: Any
+    avatar_dir: Path
+
+# ====================
+# CONSTANTS
+# ====================
+STANDARD_WORK_HOURS = 8 * 60  # 8 hours in minutes
+MAX_BREAK_MINUTES = 50
+BREAK_WARNING_THRESHOLD = 60  # 1 hour in minutes
 
 # ====================
 # CONFIGURATION
 # ====================
-def load_config():
+def load_config() -> Optional[AppConfig]:
     """Load configuration from secrets and environment"""
     try:
         SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -23,13 +55,16 @@ def load_config():
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
         client = gspread.authorize(creds)
         
-        return {
-            "SPREADSHEET_ID": "1Pn9bMdHwK1OOvoNtsc_i3kIeuFahQixaM4bYKhQkMes",
-            "EMAIL_ADDRESS": st.secrets["EMAIL_ADDRESS"],
-            "EMAIL_PASSWORD": st.secrets["EMAIL_PASSWORD"],
-            "client": client,
-            "AVATAR_DIR": Path("avatars")
-        }
+        avatar_dir = Path("avatars")
+        avatar_dir.mkdir(exist_ok=True)
+        
+        return AppConfig(
+            spreadsheet_id="1Pn9bMdHwK1OOvoNtsc_i3kIeuFahQixaM4bYKhQkMes",
+            email_address=st.secrets["EMAIL_ADDRESS"],
+            email_password=st.secrets["EMAIL_PASSWORD"],
+            client=client,
+            avatar_dir=avatar_dir
+        )
     except Exception as e:
         st.error(f"Configuration error: {str(e)}")
         return None
@@ -38,25 +73,25 @@ config = load_config()
 if config is None:
     st.stop()
 
-AVATAR_DIR = config["AVATAR_DIR"]
-AVATAR_DIR.mkdir(exist_ok=True)
-
 # ====================
 # THEME MANAGEMENT
 # ====================
-def get_system_theme():
+def get_system_theme() -> str:
     """Detect system theme preference using JavaScript evaluation"""
     try:
-        theme = streamlit_js_eval(js_expressions='window.matchMedia("(prefers-color-scheme: dark)").matches', want_output=True)
+        theme = streamlit_js_eval(
+            js_expressions='window.matchMedia("(prefers-color-scheme: dark)").matches', 
+            want_output=True
+        )
         return "dark" if theme else "light"
     except:
         current_hour = datetime.datetime.now().hour
         return "dark" if current_hour < 6 or current_hour >= 18 else "light"
 
-def apply_theme(theme_mode):
+def apply_theme(theme_mode: str) -> Dict[str, Any]:
     """Apply the selected theme with responsive design"""
-    if theme_mode == "dark":
-        theme_colors = {
+    theme_colors = {
+        "dark": {
             "primary": "#1e1e1e",
             "secondary": "#2d2d2d",
             "text": "#f5f5f5",
@@ -67,9 +102,8 @@ def apply_theme(theme_mode):
             "plot_bg": "#1e1e1e",
             "paper_bg": "#1e1e1e",
             "font_color": "#f5f5f5"
-        }
-    else:
-        theme_colors = {
+        },
+        "light": {
             "primary": "#f6f9fc",
             "secondary": "#ffffff",
             "text": "#333333",
@@ -81,6 +115,7 @@ def apply_theme(theme_mode):
             "paper_bg": "#ffffff",
             "font_color": "#333333"
         }
+    }.get(theme_mode, {})
     
     theme_css = f"""
     <style>
@@ -173,6 +208,165 @@ def apply_theme(theme_mode):
     return plotly_template
 
 # ====================
+# UTILITY FUNCTIONS
+# ====================
+def format_duration(minutes: float) -> str:
+    """Convert minutes to HH:MM format"""
+    try:
+        hrs = int(minutes // 60)
+        mins = int(minutes % 60)
+        return f"{hrs:02}:{mins:02}"
+    except (TypeError, ValueError):
+        return "00:00"
+
+def time_str_to_minutes(time_str: str) -> int:
+    """Convert time string (HH:MM) to minutes"""
+    if not time_str:
+        return 0
+    try:
+        h, m = map(int, time_str.split(":"))
+        return h * 60 + m
+    except (ValueError, AttributeError):
+        return 0
+
+def evaluate_status(break_duration: str, work_duration: str) -> str:
+    """Evaluate employee status based on break and work time"""
+    break_min = time_str_to_minutes(break_duration)
+    work_min = time_str_to_minutes(work_duration)
+    
+    if work_min >= STANDARD_WORK_HOURS and break_min <= MAX_BREAK_MINUTES:
+        return "✅ Complete"
+    elif break_min > MAX_BREAK_MINUTES:
+        return "❌ Over Break"
+    return "❌ Incomplete"
+
+def calculate_overtime(login_time: datetime.datetime, 
+                      logout_time: datetime.datetime, 
+                      break_mins: int) -> float:
+    """Calculate overtime hours"""
+    total_mins = (logout_time - login_time).total_seconds() / 60
+    worked_mins = total_mins - break_mins
+    overtime = max(0, worked_mins - STANDARD_WORK_HOURS)
+    return round(overtime / 60, 2)  # Convert to hours with 2 decimal places
+
+def export_to_csv(sheet) -> Optional[str]:
+    """Export sheet data to CSV file"""
+    try:
+        data = sheet.get_all_values()
+        filename = f"Daily_Logs_{datetime.datetime.now().strftime('%Y-%m-%d')}.csv"
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerows(data)
+        return filename
+    except Exception as e:
+        st.error(f"Export failed: {str(e)}")
+        return None
+
+def send_email_with_csv(to_email: str, file_path: str) -> bool:
+    """Send email with CSV attachment"""
+    try:
+        if not os.path.exists(file_path):
+            st.error("File not found for email attachment")
+            return False
+
+        msg = EmailMessage()
+        msg['Subject'] = 'Daily Employee Report'
+        msg['From'] = config.email_address
+        msg['To'] = to_email
+        msg.set_content("Attached is the daily employee report from PixsEdit Tracker.")
+
+        with open(file_path, 'rb') as f:
+            file_data = f.read()
+            msg.add_attachment(
+                file_data, 
+                maintype="application", 
+                subtype="octet-stream", 
+                filename=os.path.basename(file_path)
+            )
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(config.email_address, config.email_password)
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Email failed: {str(e)}")
+        return False
+
+def get_current_datetime_str() -> str:
+    """Get current datetime as formatted string"""
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# ====================
+# GOOGLE SHEETS INTEGRATION
+# ====================
+def connect_to_google_sheets() -> Tuple[Any, Any]:
+    """Connect to Google Sheets and get required worksheets"""
+    try:
+        spreadsheet = config.client.open_by_key(config.spreadsheet_id)
+        today = datetime.datetime.now().strftime('%Y-%m-%d')
+        sheet_name = f"Daily Logs {today}"
+
+        try:
+            sheet = spreadsheet.worksheet(sheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            sheet = spreadsheet.add_worksheet(
+                title=sheet_name, 
+                rows="100", 
+                cols="10"
+            )
+            sheet.append_row([
+                "Employee Name", "Login Time", "Logout Time", 
+                "Break Start", "Break End", "Break Duration", 
+                "Total Work Time", "Status", "Overtime"
+            ])
+
+        try:
+            users_sheet = spreadsheet.worksheet("Registered Employees")
+        except gspread.exceptions.WorksheetNotFound:
+            users_sheet = spreadsheet.add_worksheet(
+                title="Registered Employees", 
+                rows="100", 
+                cols="2"
+            )
+            users_sheet.append_row(["Username", "Password"])
+
+        return users_sheet, sheet
+    except Exception as e:
+        st.error(f"Google Sheets connection failed: {str(e)}")
+        return None, None
+
+def get_employee_record(sheet, row_index: int) -> EmployeeRecord:
+    """Get employee record from sheet row"""
+    row = sheet.row_values(row_index)
+    return EmployeeRecord(
+        name=row[0] if len(row) > 0 else "",
+        login_time=row[1] if len(row) > 1 else None,
+        logout_time=row[2] if len(row) > 2 else None,
+        break_start=row[3] if len(row) > 3 else None,
+        break_end=row[4] if len(row) > 4 else None,
+        break_duration=row[5] if len(row) > 5 else None,
+        work_time=row[6] if len(row) > 6 else None,
+        status=row[7] if len(row) > 7 else None,
+        overtime=row[8] if len(row) > 8 else None
+    )
+
+# ====================
+# SESSION STATE MANAGEMENT
+# ====================
+def init_session_state():
+    """Initialize session state variables"""
+    if 'user' not in st.session_state:
+        st.session_state.user = None
+    if 'row_index' not in st.session_state:
+        st.session_state.row_index = None
+    if 'avatar_uploaded' not in st.session_state:
+        st.session_state.avatar_uploaded = False
+    if 'theme' not in st.session_state:
+        st.session_state.theme = get_system_theme()
+    if 'plotly_template' not in st.session_state:
+        st.session_state.plotly_template = apply_theme(st.session_state.theme)
+
+# ====================
 # PAGE SETUP
 # ====================
 def setup_page():
@@ -206,132 +400,60 @@ def setup_page():
         st.error(f"Page setup error: {str(e)}")
 
 # ====================
-# UTILITY FUNCTIONS
+# AUTHENTICATION
 # ====================
-def format_duration(minutes):
-    """Convert minutes to HH:MM format"""
-    try:
-        hrs = int(minutes // 60)
-        mins = int(minutes % 60)
-        return f"{hrs:02}:{mins:02}"
-    except:
-        return "00:00"
-
-def evaluate_status(break_str, work_str):
-    """Evaluate employee status based on break and work time"""
-    def to_minutes(t):
-        try:
-            h, m = map(int, t.split(":"))
-            return h * 60 + m
-        except:
-            return 0
-    
-    try:
-        break_min = to_minutes(break_str) if break_str else 0
-        work_min = to_minutes(work_str) if work_str else 0
+def handle_login(username: str, password: str):
+    """Process login attempt"""
+    if not username or not password:
+        st.error("Username and password are required")
+        return
         
-        if work_min >= 540 and break_min <= 50:
-            return "✅ Complete"
-        elif break_min > 50:
-            return "❌ Over Break"
-        else:
-            return "❌ Incomplete"
-    except:
-        return ""
-
-def calculate_overtime(login_time, logout_time, break_mins):
-    """Calculate overtime hours"""
-    standard_hours = 8 * 60  # 8 hour workday in minutes
-    total_mins = (logout_time - login_time).total_seconds() / 60
-    worked_mins = total_mins - break_mins
-    overtime = max(0, worked_mins - standard_hours)
-    return round(overtime / 60, 2)  # Convert to hours with 2 decimal places
-
-def export_to_csv(sheet):
-    """Export sheet data to CSV file"""
-    try:
-        data = sheet.get_all_values()
-        filename = f"Daily_Logs_{datetime.datetime.now().strftime('%Y-%m-%d')}.csv"
-        with open(filename, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerows(data)
-        return filename
-    except Exception as e:
-        st.error(f"Export failed: {str(e)}")
-        return None
-
-def send_email_with_csv(to_email, file_path):
-    """Send email with CSV attachment"""
-    try:
-        if not os.path.exists(file_path):
-            st.error("File not found for email attachment")
-            return False
-
-        msg = EmailMessage()
-        msg['Subject'] = 'Daily Employee Report'
-        msg['From'] = config["EMAIL_ADDRESS"]
-        msg['To'] = to_email
-        msg.set_content("Attached is the daily employee report from PixsEdit Tracker.")
-
-        with open(file_path, 'rb') as f:
-            file_data = f.read()
-            msg.add_attachment(file_data, 
-                             maintype="application", 
-                             subtype="octet-stream", 
-                             filename=os.path.basename(file_path))
-
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(config["EMAIL_ADDRESS"], config["EMAIL_PASSWORD"])
-            smtp.send_message(msg)
-        return True
-    except Exception as e:
-        st.error(f"Email failed: {str(e)}")
-        return False
-
-# ====================
-# GOOGLE SHEETS INTEGRATION
-# ====================
-def connect_to_google_sheets():
-    """Connect to Google Sheets and get required worksheets"""
-    try:
-        spreadsheet = config["client"].open_by_key(config["SPREADSHEET_ID"])
-        today = datetime.datetime.now().strftime('%Y-%m-%d')
-        sheet_name = f"Daily Logs {today}"
-
-        try:
-            sheet = spreadsheet.worksheet(sheet_name)
-        except:
-            sheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="10")
-            sheet.append_row(["Employee Name", "Login Time", "Logout Time", 
-                            "Break Start", "Break End", "Break Duration", 
-                            "Total Work Time", "Status", "Overtime"])
-
-        try:
-            users_sheet = spreadsheet.worksheet("Registered Employees")
-        except:
-            users_sheet = spreadsheet.add_worksheet(title="Registered Employees", rows="100", cols="2")
-            users_sheet.append_row(["Username", "Password"])
-
-        return users_sheet, sheet
-    except Exception as e:
-        st.error(f"Google Sheets connection failed: {str(e)}")
-        return None, None
-
-# ====================
-# SESSION STATE MANAGEMENT
-# ====================
-def init_session_state():
-    """Initialize session state variables"""
-    if 'user' not in st.session_state:
-        st.session_state.user = None
-    if 'row_index' not in st.session_state:
+    sheet1, _ = connect_to_google_sheets()
+    if sheet1 is None:
+        return
+        
+    users = sheet1.get_all_values()[1:]  # Skip header
+    user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
+    
+    if username not in user_dict or user_dict[username] != password:
+        st.error("Invalid credentials.")
+    else:
+        st.session_state.user = username
+        _, sheet2 = connect_to_google_sheets()
+        if sheet2 is None:
+            return
+            
+        rows = sheet2.get_all_values()
         st.session_state.row_index = None
-    if 'avatar_uploaded' not in st.session_state:
-        st.session_state.avatar_uploaded = False
-    if 'theme' not in st.session_state:
-        st.session_state.theme = get_system_theme()
-    if 'plotly_template' not in st.session_state:
-        st.session_state.plotly_template = apply_theme(st.session_state.theme)
+        for i, row in enumerate(rows[1:], start=2):  # Skip header
+            if row and row[0] == username:
+                st.session_state.row_index = i
+                break
+
+        if username != "admin" and st.session_state.row_index is None:
+            sheet2.append_row([username, get_current_datetime_str()] + [""]*7)
+            st.session_state.row_index = len(sheet2.get_all_values())
+        
+        st.rerun()
+
+def handle_registration(username: str, password: str):
+    """Process new user registration"""
+    if not username or not password:
+        st.error("Username and password are required")
+        return
+        
+    sheet1, _ = connect_to_google_sheets()
+    if sheet1 is None:
+        return
+        
+    users = sheet1.get_all_values()[1:]  # Skip header
+    user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
+    
+    if username in user_dict:
+        st.error("User already exists.")
+    else:
+        sheet1.append_row([username, password])
+        st.success("Registration successful! Please login.")
 
 # ====================
 # SIDEBAR COMPONENTS
@@ -352,7 +474,7 @@ def render_avatar_section():
     """Handle avatar upload and display"""
     try:
         if st.session_state.user:
-            avatar_path = AVATAR_DIR / f"{st.session_state.user}.png"
+            avatar_path = config.avatar_dir / f"{st.session_state.user}.png"
             if avatar_path.exists():
                 st.image(str(avatar_path), width=100, caption=f"Welcome {st.session_state.user}")
             
@@ -365,8 +487,7 @@ def render_avatar_section():
         else:
             uploaded_avatar = st.file_uploader("Upload Avatar (optional)", type=["jpg", "jpeg", "png"])
             if uploaded_avatar:
-                temp_name = "temp_avatar.png"
-                temp_path = AVATAR_DIR / temp_name
+                temp_path = config.avatar_dir / "temp_avatar.png"
                 with open(temp_path, "wb") as f:
                     f.write(uploaded_avatar.read())
                 st.image(str(temp_path), width=100, caption="Preview")
@@ -396,85 +517,9 @@ def render_login_section():
     except Exception as e:
         st.error(f"Login error: {str(e)}")
 
-def handle_login(username, password):
-    """Process login attempt"""
-    try:
-        if not username or not password:
-            st.error("Username and password are required")
-            return
-            
-        sheet1, _ = connect_to_google_sheets()
-        if sheet1 is None:
-            return
-            
-        users = sheet1.get_all_values()[1:]  # Skip header
-        user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
-        
-        if username not in user_dict or user_dict[username] != password:
-            st.error("Invalid credentials.")
-        else:
-            st.session_state.user = username
-            _, sheet2 = connect_to_google_sheets()
-            if sheet2 is None:
-                return
-                
-            rows = sheet2.get_all_values()
-            st.session_state.row_index = None
-            for i, row in enumerate(rows[1:], start=2):  # Skip header
-                if row and row[0] == username:
-                    st.session_state.row_index = i
-                    break
-
-            if username != "admin" and st.session_state.row_index is None:
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                sheet2.append_row([username, now, "", "", "", "", "", "", ""])
-                st.session_state.row_index = len(sheet2.get_all_values())
-            
-            st.rerun()
-    except Exception as e:
-        st.error(f"Login processing error: {str(e)}")
-
-def handle_registration(username, password):
-    """Process new user registration"""
-    try:
-        if not username or not password:
-            st.error("Username and password are required")
-            return
-            
-        sheet1, _ = connect_to_google_sheets()
-        if sheet1 is None:
-            return
-            
-        users = sheet1.get_all_values()[1:]  # Skip header
-        user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
-        
-        if username in user_dict:
-            st.error("User already exists.")
-        else:
-            sheet1.append_row([username, password])
-            st.success("Registration successful! Please login.")
-    except Exception as e:
-        st.error(f"Registration error: {str(e)}")
-
 # ====================
-# MAIN CONTENT AREAS
+# ADMIN DASHBOARD
 # ====================
-def render_main_content():
-    """Render the appropriate content based on user state"""
-    try:
-        st.markdown("<div class='main'>", unsafe_allow_html=True)
-        
-        if st.session_state.user == "admin":
-            render_admin_dashboard()
-        elif st.session_state.user:
-            render_employee_dashboard()
-        else:
-            render_landing_page()
-            
-        st.markdown("</div>", unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"Content rendering error: {str(e)}")
-
 def render_admin_dashboard():
     """Render the admin dashboard"""
     try:
@@ -487,7 +532,7 @@ def render_admin_dashboard():
         try:
             data = sheet2.get_all_records()
             df = pd.DataFrame(data) if data else pd.DataFrame()
-        except:
+        except Exception:
             df = pd.DataFrame()
         
         render_admin_metrics(sheet1, df)
@@ -497,7 +542,7 @@ def render_admin_dashboard():
     except Exception as e:
         st.error(f"Admin dashboard error: {str(e)}")
 
-def render_admin_metrics(sheet1, df):
+def render_admin_metrics(sheet1, df: pd.DataFrame):
     """Render admin metrics cards"""
     try:
         st.subheader("📈 Employee Overview")
@@ -530,7 +575,7 @@ def render_admin_metrics(sheet1, df):
     except Exception as e:
         st.error(f"Metrics error: {str(e)}")
 
-def render_employee_directory(df):
+def render_employee_directory(df: pd.DataFrame):
     """Render employee directory table"""
     try:
         st.subheader("👥 Employee Directory")
@@ -541,8 +586,8 @@ def render_employee_directory(df):
     except Exception as e:
         st.error(f"Directory error: {str(e)}")
 
-def render_admin_analytics(df):
-    """Render admin analytics charts with proper error handling"""
+def render_admin_analytics(df: pd.DataFrame):
+    """Render admin analytics charts"""
     try:
         st.subheader("📊 Analytics")
         
@@ -555,14 +600,16 @@ def render_admin_analytics(df):
         with tab1:
             try:
                 if not df.empty and 'Total Work Time' in df.columns:
+                    df['Work Minutes'] = df['Total Work Time'].apply(time_str_to_minutes)
                     bar_fig = px.bar(
                         df,
                         x="Employee Name", 
-                        y="Total Work Time", 
+                        y="Work Minutes", 
                         title="Work Duration per Employee", 
                         color="Status",
                         height=400,
-                        template=st.session_state.plotly_template
+                        template=st.session_state.plotly_template,
+                        labels={"Work Minutes": "Work Duration (minutes)"}
                     )
                     st.plotly_chart(bar_fig, use_container_width=True)
                 else:
@@ -591,8 +638,8 @@ def render_admin_analytics(df):
         with tab3:
             try:
                 if not df.empty and 'Overtime' in df.columns:
-                    # Convert overtime strings to numeric values
-                    df['Overtime Hours'] = df['Overtime'].apply(lambda x: float(x.split()[0]) if x and isinstance(x, str) else 0)
+                    # Extract numeric values from overtime strings
+                    df['Overtime Hours'] = df['Overtime'].str.extract(r'(\d+\.?\d*)').astype(float)
                     overtime_fig = px.bar(
                         df,
                         x="Employee Name",
@@ -611,7 +658,7 @@ def render_admin_analytics(df):
     except Exception as e:
         st.error(f"Analytics error: {str(e)}")
 
-def render_reporting_tools(sheet2):
+def render_reporting_tools(sheet):
     """Render reporting tools section"""
     try:
         st.subheader("📤 Reports")
@@ -628,7 +675,7 @@ def render_reporting_tools(sheet2):
                     st.warning("Please enter a valid email address")
                 else:
                     with st.spinner("Generating and sending report..."):
-                        csv_file = export_to_csv(sheet2)
+                        csv_file = export_to_csv(sheet)
                         if csv_file and send_email_with_csv(email_to, csv_file):
                             st.success("Report emailed successfully!")
                         else:
@@ -636,7 +683,7 @@ def render_reporting_tools(sheet2):
         
         if st.button("📥 Export as CSV"):
             with st.spinner("Exporting data..."):
-                csv_file = export_to_csv(sheet2)
+                csv_file = export_to_csv(sheet)
                 if csv_file:
                     st.success(f"Exported: {csv_file}")
                     with open(csv_file, "rb") as f:
@@ -649,8 +696,11 @@ def render_reporting_tools(sheet2):
     except Exception as e:
         st.error(f"Reporting tools error: {str(e)}")
 
+# ====================
+# EMPLOYEE DASHBOARD
+# ====================
 def render_employee_dashboard():
-    """Render the employee dashboard with all new features"""
+    """Render the employee dashboard"""
     try:
         st.title(f"👋 Welcome, {st.session_state.user}")
         
@@ -658,26 +708,26 @@ def render_employee_dashboard():
         if sheet2 is None:
             return
             
-        row = sheet2.row_values(st.session_state.row_index)
+        employee = get_employee_record(sheet2, st.session_state.row_index)
         
-        render_employee_metrics(row)
-        render_time_tracking_controls(sheet2, row)
-        render_daily_summary(sheet2, row)
+        render_employee_metrics(employee)
+        render_time_tracking_controls(sheet2, employee)
+        render_daily_summary(employee)
         show_break_history(sheet2)
-        show_productivity_tips(row)
+        show_productivity_tips(employee)
         
     except Exception as e:
         st.error(f"Employee dashboard error: {str(e)}")
 
-def render_employee_metrics(row):
+def render_employee_metrics(employee: EmployeeRecord):
     """Render employee metrics cards"""
     try:
         cols = st.columns(3)
         
         metrics = [
-            ("Login Time", row[1] if len(row) > 1 else "Not logged in"),
-            ("Break Duration", row[5] if len(row) > 5 and row[5] else "00:00"),
-            ("Work Time", row[6] if len(row) > 6 and row[6] else "00:00")
+            ("Login Time", employee.login_time or "Not logged in"),
+            ("Break Duration", employee.break_duration or "00:00"),
+            ("Work Time", employee.work_time or "00:00")
         ]
         
         for col, (title, value) in zip(cols, metrics):
@@ -691,7 +741,7 @@ def render_employee_metrics(row):
     except Exception as e:
         st.error(f"Employee metrics error: {str(e)}")
 
-def render_time_tracking_controls(sheet2, row):
+def render_time_tracking_controls(sheet, employee: EmployeeRecord):
     """Render time tracking buttons with fixed break functionality"""
     try:
         st.subheader("⏱ Time Tracking")
@@ -699,42 +749,32 @@ def render_time_tracking_controls(sheet2, row):
         
         with cols[0]:  # Start Break button
             if st.button("☕ Start Break"):
-                # Check if break is already ongoing
-                if len(row) > 3 and row[3] and (len(row) <= 5 or not row[5]):
+                if employee.break_start and not employee.break_end:
                     st.warning("Break already in progress!")
                     return
                     
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                # Ensure we have enough columns
-                if len(row) < 4:
-                    sheet2.resize(rows=1, cols=9)  # Ensure sheet has enough columns
-                sheet2.update_cell(st.session_state.row_index, 4, now)
-                st.success(f"Break started at {now}")
+                sheet.update_cell(st.session_state.row_index, 4, get_current_datetime_str())
+                st.success(f"Break started at {get_current_datetime_str()}")
                 st.rerun()
         
         with cols[1]:  # End Break button
             if st.button("🔙 End Break"):
-                # Check if break was started but not ended
-                if len(row) <= 3 or not row[3]:
+                if not employee.break_start:
                     st.error("No break to end!")
                     return
-                if len(row) > 5 and row[5]:
+                if employee.break_end:
                     st.error("Break already ended!")
                     return
                     
-                break_start = datetime.datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
+                break_start = datetime.datetime.strptime(employee.break_start, "%Y-%m-%d %H:%M:%S")
                 break_end = datetime.datetime.now()
                 duration = (break_end - break_start).total_seconds() / 60
                 
-                # Ensure we have enough columns
-                if len(row) < 6:
-                    sheet2.resize(rows=1, cols=9)
-                    
-                sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
-                sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
+                sheet.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
+                sheet.update_cell(st.session_state.row_index, 6, format_duration(duration))
                 
                 # Show warning for long breaks
-                if duration > 60:  # More than 1 hour break
+                if duration > BREAK_WARNING_THRESHOLD:
                     st.warning("Long break detected! Consider shorter breaks for productivity")
                 
                 st.success(f"Break ended. Duration: {format_duration(duration)}")
@@ -742,56 +782,41 @@ def render_time_tracking_controls(sheet2, row):
         
         with cols[2]:  # Logout button
             if st.button("🔒 Logout"):
-                handle_logout(sheet2, row)
+                handle_logout(sheet, employee)
                 
     except Exception as e:
         st.error(f"Time tracking error: {str(e)}")
 
-def handle_logout(sheet2, row):
+def handle_logout(sheet, employee: EmployeeRecord):
     """Handle logout process with proper break time calculation"""
     try:
-        if len(row) < 2 or not row[1]:  # Check if login time exists
+        if not employee.login_time:  # Check if login time exists
             st.error("No login time recorded")
             return
             
-        login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+        login_time = datetime.datetime.strptime(employee.login_time, "%Y-%m-%d %H:%M:%S")
         logout_time = datetime.datetime.now()
         
         # Update logout time
-        if len(row) < 3:
-            sheet2.resize(rows=1, cols=9)  # Ensure enough columns
-        sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
+        sheet.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
 
         # Calculate break duration if break was taken
-        break_mins = 0
-        if len(row) > 5 and row[5]:
-            try:
-                h, m = map(int, row[5].split(":"))
-                break_mins = h * 60 + m
-            except:
-                break_mins = 0
+        break_mins = time_str_to_minutes(employee.break_duration) if employee.break_duration else 0
 
         # Calculate total work time (minus break time)
         total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
         total_str = format_duration(total_mins)
         
-        # Ensure we have columns for work time and status
-        if len(row) < 7:
-            sheet2.resize(rows=1, cols=9)
-        if len(row) < 8:
-            sheet2.resize(rows=1, cols=9)
-            
-        sheet2.update_cell(st.session_state.row_index, 7, total_str)
+        # Update work time
+        sheet.update_cell(st.session_state.row_index, 7, total_str)
         
         # Evaluate and update status
-        status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
-        sheet2.update_cell(st.session_state.row_index, 8, status)
+        status = evaluate_status(employee.break_duration or "", total_str)
+        sheet.update_cell(st.session_state.row_index, 8, status)
 
         # Calculate and store overtime
         overtime = calculate_overtime(login_time, logout_time, break_mins)
-        if len(row) < 9:
-            sheet2.resize(rows=1, cols=9)
-        sheet2.update_cell(st.session_state.row_index, 9, f"{overtime} hours")
+        sheet.update_cell(st.session_state.row_index, 9, f"{overtime} hours")
 
         st.success(f"Logged out. Worked: {total_str}")
         st.session_state.user = None
@@ -800,58 +825,59 @@ def handle_logout(sheet2, row):
     except Exception as e:
         st.error(f"Logout error: {str(e)}")
 
-def render_daily_summary(sheet2, row):
+def render_daily_summary(employee: EmployeeRecord):
     """Show summary of today's work"""
     try:
-        if len(row) > 6 and row[6]:  # Work time exists
+        if employee.work_time:  # Work time exists
             st.subheader("📝 Today's Summary")
             cols = st.columns(3)
             with cols[0]:
-                st.metric("Work Time", row[6])
+                st.metric("Work Time", employee.work_time)
             with cols[1]:
-                st.metric("Break Time", row[5] if len(row) > 5 and row[5] else "00:00")
+                st.metric("Break Time", employee.break_duration or "00:00")
             with cols[2]:
-                overtime = row[8] if len(row) > 8 and row[8] else "0 hours"
-                st.metric("Overtime", overtime)
+                st.metric("Overtime", employee.overtime or "0 hours")
     except Exception as e:
         st.error(f"Daily summary error: {str(e)}")
 
-def show_break_history(sheet2):
+def show_break_history(sheet):
     """Display past break patterns"""
     try:
-        data = sheet2.get_all_records()
+        data = sheet.get_all_records()
         df = pd.DataFrame(data)
         
         if not df.empty and 'Break Duration' in df.columns:
             st.subheader("⏳ Break History")
             # Convert break duration to minutes for analysis
-            df['Break Minutes'] = df['Break Duration'].apply(
-                lambda x: int(x.split(':')[0]) * 60 + int(x.split(':')[1]) if x and ':' in x else 0
-            )
+            df['Break Minutes'] = df['Break Duration'].apply(time_str_to_minutes)
             
-            fig = px.line(df, x='Login Time', y='Break Minutes', 
-                         title="Your Break Patterns Over Time",
-                         template=st.session_state.plotly_template)
-            st.plotly_chart(fig)
+            fig = px.line(
+                df, 
+                x='Login Time', 
+                y='Break Minutes', 
+                title="Your Break Patterns Over Time",
+                template=st.session_state.plotly_template,
+                labels={"Break Minutes": "Break Duration (minutes)"}
+            )
+            st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.error(f"Break history error: {str(e)}")
 
-def show_productivity_tips(row):
+def show_productivity_tips(employee: EmployeeRecord):
     """Contextual productivity suggestions"""
     try:
-        if len(row) > 5 and row[5]:  # If break data exists
-            try:
-                h, m = map(int, row[5].split(':'))
-                total_mins = h * 60 + m
-                if total_mins < 30:
-                    st.info("💡 Tip: Consider taking longer breaks for better productivity")
-                elif total_mins > 60:
-                    st.info("💡 Tip: Frequent shorter breaks are better than one long break")
-            except:
-                pass
+        if employee.break_duration:  # If break data exists
+            break_minutes = time_str_to_minutes(employee.break_duration)
+            if break_minutes < 30:
+                st.info("💡 Tip: Consider taking longer breaks for better productivity")
+            elif break_minutes > BREAK_WARNING_THRESHOLD:
+                st.info("💡 Tip: Frequent shorter breaks are better than one long break")
     except Exception as e:
         st.error(f"Productivity tips error: {str(e)}")
 
+# ====================
+# LANDING PAGE
+# ====================
 def render_landing_page():
     """Render the landing page for non-logged in users"""
     try:
@@ -866,6 +892,25 @@ def render_landing_page():
         """, unsafe_allow_html=True)
     except Exception as e:
         st.error(f"Landing page error: {str(e)}")
+
+# ====================
+# MAIN CONTENT
+# ====================
+def render_main_content():
+    """Render the appropriate content based on user state"""
+    try:
+        st.markdown("<div class='main'>", unsafe_allow_html=True)
+        
+        if st.session_state.user == "admin":
+            render_admin_dashboard()
+        elif st.session_state.user:
+            render_employee_dashboard()
+        else:
+            render_landing_page()
+            
+        st.markdown("</div>", unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Content rendering error: {str(e)}")
 
 # ====================
 # MAIN APP EXECUTION
