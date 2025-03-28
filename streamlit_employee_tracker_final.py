@@ -838,6 +838,7 @@ class AdminDashboard:
 
 # ====================
 # ====================
+# ====================
 # EMPLOYEE DASHBOARD - TIME TRACKING CONTROLS
 # ====================
 class EmployeeDashboard:
@@ -917,13 +918,13 @@ class EmployeeDashboard:
     @staticmethod
     def handle_logout(sheet, employee: EmployeeRecord):
         """Handle logout process with proper break time calculation"""
-        current_time = get_current_datetime_str()
-        
-        if not employee.login_time:
-            st.error("No login time recorded")
-            return
-            
         try:
+            current_time = get_current_datetime_str()
+            
+            if not employee.login_time:
+                st.error("No login time recorded")
+                return
+                
             # Update logout time
             sheet.update_cell(st.session_state.row_index, 3, current_time)
 
@@ -977,46 +978,6 @@ class EmployeeDashboard:
             
         except Exception as e:
             logger.error(f"Logout processing error: {str(e)}")
-            raise Exception("Failed to complete logout process")
-    @staticmethod
-    def handle_logout(sheet, employee: EmployeeRecord):
-        """Handle logout process with proper break time calculation"""
-        try:
-            if not employee.login_time:  # Check if login time exists
-                st.error("No login time recorded")
-                return
-                
-            # Update logout time
-            if not update_employee_record(sheet, st.session_state.row_index, TimeAction.LOGOUT):
-                st.error("Failed to record logout time")
-                return
-                
-            # Get updated record
-            record = get_employee_record(sheet, st.session_state.row_index)
-            
-            # Calculate break duration if break was taken
-            break_mins = time_str_to_minutes(record.break_duration) if record.break_duration else 0
-
-            # Calculate total work time (minus break time)
-            total_mins = calculate_time_difference(record.login_time, record.logout_time) - break_mins
-            total_str = format_duration(total_mins)
-            
-            # Update work time
-            sheet.update_cell(st.session_state.row_index, 7, total_str)
-            
-            # Evaluate and update status
-            status = evaluate_status(record.break_duration or "", total_str)
-            sheet.update_cell(st.session_state.row_index, 8, status)
-
-            # Calculate and store overtime
-            overtime = calculate_overtime(record.login_time, record.logout_time, break_mins)
-            sheet.update_cell(st.session_state.row_index, 9, f"{overtime} hours")
-
-            st.success(f"Logged out. Worked: {total_str}")
-            SessionStateManager.clear_session()
-            st.rerun()
-        except Exception as e:
-            logger.error(f"Logout error: {str(e)}")
             st.error("Failed to complete logout process")
 
     @staticmethod
