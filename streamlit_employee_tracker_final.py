@@ -837,6 +837,7 @@ class AdminDashboard:
             st.error("Failed to load reporting tools")
 
 # ====================
+# ====================
 # EMPLOYEE DASHBOARD - TIME TRACKING CONTROLS
 # ====================
 class EmployeeDashboard:
