@@ -25,25 +25,35 @@ AVATAR_DIR = Path("avatars")
 AVATAR_DIR.mkdir(exist_ok=True)
 
 # === PAGE SETUP ===
-st.set_page_config(page_title="🌟 PixsEdit Employee Tracker", layout="wide")
+st.set_page_config(
+    page_title="🌟 PixsEdit Employee Tracker", 
+    layout="wide",
+    page_icon="🕒"
+)
 
-# === AUTO THEME BASED ON TIME ===
+# === THEME MANAGEMENT ===
 current_hour = datetime.datetime.now().hour
 auto_dark = current_hour < 6 or current_hour >= 18
-st.sidebar.caption("🌓 Auto theme applied based on time of day")
-
-dark_mode = st.sidebar.toggle("🌙 Enable Dark Mode", value=auto_dark)
+dark_mode = st.sidebar.toggle("🌙 Dark Mode", value=auto_dark)
 
 if dark_mode:
     st.markdown("""
     <style>
-        body {
+        .main {
             background-color: #1e1e1e;
             color: #f5f5f5;
+            padding: 2rem;
+            border-radius: 1rem;
         }
         .stButton>button {
             background-color: #333333 !important;
             color: #ffffff !important;
+        }
+        .metric-card {
+            background-color: #2d2d2d;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -63,30 +73,17 @@ else:
         color: white;
         border: none;
     }
+    .metric-card {
+        background-color: white;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🕒 PixsEdit Employee Tracker")
-st.subheader("Luxury Interface ✨ with Live Dashboard")
-
-# === GOOGLE SHEETS CONNECTION ===
-def connect_to_google_sheets():
-    spreadsheet = client.open_by_key(SPREADSHEET_ID)
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
-    sheet_name = f"Daily Logs {today}"
-
-    if sheet_name not in [s.title for s in spreadsheet.worksheets()]:
-        sheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="10")
-        sheet.append_row(["Employee Name", "Login Time", "Logout Time", "Break Start", "Break End", "Break Duration", "Total Work Time", "Status"])
-    else:
-        sheet = spreadsheet.worksheet(sheet_name)
-
-    users_sheet = spreadsheet.worksheet("Registered Employees")
-    return users_sheet, sheet
-
-sheet1, sheet2 = connect_to_google_sheets()
-
-# === FORMATTERS & UTILITIES ===
+# === UTILITY FUNCTIONS ===
 def format_duration(minutes):
     hrs = int(minutes // 60)
     mins = int(minutes % 60)
@@ -131,132 +128,264 @@ def send_email_with_csv(to_email, file_path):
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
-# === AVATAR SYSTEM ===
-if 'user' not in st.session_state or st.session_state.user is None:
-    uploaded_avatar = st.sidebar.file_uploader("Upload your Avatar (optional)", type=["jpg", "jpeg", "png"])
-    if uploaded_avatar:
-        temp_name = "temp_avatar.png"
-        temp_path = AVATAR_DIR / temp_name
-        with open(temp_path, "wb") as f:
-            f.write(uploaded_avatar.read())
-        st.sidebar.image(str(temp_path), width=100, caption="Preview")
+# === GOOGLE SHEETS CONNECTION ===
+def connect_to_google_sheets():
+    spreadsheet = client.open_by_key(SPREADSHEET_ID)
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    sheet_name = f"Daily Logs {today}"
 
-elif st.session_state.user:
-    avatar_path = AVATAR_DIR / f"{st.session_state.user}.png"
-    if avatar_path.exists():
-        st.sidebar.image(str(avatar_path), width=100, caption="Welcome Back ✨")
+    if sheet_name not in [s.title for s in spreadsheet.worksheets()]:
+        sheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="10")
+        sheet.append_row(["Employee Name", "Login Time", "Logout Time", "Break Start", "Break End", "Break Duration", "Total Work Time", "Status"])
+    else:
+        sheet = spreadsheet.worksheet(sheet_name)
 
-    new_avatar = st.sidebar.file_uploader("Update your Avatar (optional)", type=["jpg", "jpeg", "png"])
-    if new_avatar:
-        with open(avatar_path, "wb") as f:
-            f.write(new_avatar.read())
-        st.sidebar.success("Avatar updated!")
-        st.experimental_rerun()
+    users_sheet = spreadsheet.worksheet("Registered Employees")
+    return users_sheet, sheet
 
-# === LOGIN UI ===
-st.markdown("""<div class='main'>""", unsafe_allow_html=True)
-username = st.text_input("👤 Username")
-password = st.text_input("🔒 Password", type="password")
-col1, col2 = st.columns(2)
-login_btn = col1.button("🚪 Login")
-register_btn = col2.button("➕ Register")
-
+# === SESSION STATE MANAGEMENT ===
 if 'user' not in st.session_state:
     st.session_state.user = None
 if 'row_index' not in st.session_state:
     st.session_state.row_index = None
+if 'avatar_uploaded' not in st.session_state:
+    st.session_state.avatar_uploaded = False
 
-users = sheet1.get_all_values()[1:]
-user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
-
-if register_btn:
-    if username in user_dict:
-        st.error("User already exists.")
+# === SIDEBAR ===
+with st.sidebar:
+    st.title("PixsEdit Tracker")
+    st.caption("🌓 Auto theme applied based on time of day")
+    
+    # Avatar Management
+    if st.session_state.user:
+        avatar_path = AVATAR_DIR / f"{st.session_state.user}.png"
+        if avatar_path.exists():
+            st.image(str(avatar_path), width=100, caption=f"Welcome {st.session_state.user}")
+        
+        new_avatar = st.file_uploader("Update Avatar", type=["jpg", "jpeg", "png"])
+        if new_avatar:
+            with open(avatar_path, "wb") as f:
+                f.write(new_avatar.read())
+            st.success("Avatar updated!")
+            st.session_state.avatar_uploaded = True
+            st.experimental_rerun()
     else:
-        sheet1.append_row([username, password])
-        st.success("Registration successful!")
-
-if login_btn:
-    if username not in user_dict or user_dict[username] != password:
-        st.error("Invalid credentials.")
+        uploaded_avatar = st.file_uploader("Upload Avatar (optional)", type=["jpg", "jpeg", "png"])
+        if uploaded_avatar:
+            temp_name = "temp_avatar.png"
+            temp_path = AVATAR_DIR / temp_name
+            with open(temp_path, "wb") as f:
+                f.write(uploaded_avatar.read())
+            st.image(str(temp_path), width=100, caption="Preview")
+    
+    # Navigation
+    st.markdown("---")
+    if st.session_state.user:
+        if st.button("🚪 Logout"):
+            st.session_state.user = None
+            st.session_state.row_index = None
+            st.experimental_rerun()
     else:
-        st.session_state.user = username
-        rows = sheet2.get_all_values()
-        for i, row in enumerate(rows[1:], start=2):
-            if row[0] == username:
-                st.session_state.row_index = i
-                break
-
-        if username != "admin":
-            if st.session_state.row_index is None:
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                sheet2.append_row([username, now, "", "", "", "", "", ""])
-                st.session_state.row_index = len(sheet2.get_all_values())
-                st.success(f"Logged in at {now}")
+        st.markdown("### Login")
+        username = st.text_input("👤 Username")
+        password = st.text_input("🔒 Password", type="password")
+        
+        col1, col2 = st.columns(2)
+        if col1.button("Login"):
+            sheet1, _ = connect_to_google_sheets()
+            users = sheet1.get_all_values()[1:]
+            user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
+            
+            if username not in user_dict or user_dict[username] != password:
+                st.error("Invalid credentials.")
             else:
-                st.info("Already logged in. Use logout when done.")
+                st.session_state.user = username
+                _, sheet2 = connect_to_google_sheets()
+                rows = sheet2.get_all_values()
+                for i, row in enumerate(rows[1:], start=2):
+                    if row[0] == username:
+                        st.session_state.row_index = i
+                        break
 
-# === DASHBOARD ===
-today = datetime.datetime.now().strftime('%Y-%m-%d')
-sheet_name = f"Daily Logs {today}"
-spreadsheet = client.open_by_key(SPREADSHEET_ID)
-sheet = spreadsheet.worksheet(sheet_name)
-data = sheet.get_all_records()
-df = pd.DataFrame(data)
+                if username != "admin":
+                    if st.session_state.row_index is None:
+                        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        sheet2.append_row([username, now, "", "", "", "", "", ""])
+                        st.session_state.row_index = len(sheet2.get_all_values())
+                st.experimental_rerun()
+        
+        if col2.button("Register"):
+            sheet1, _ = connect_to_google_sheets()
+            users = sheet1.get_all_values()[1:]
+            user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
+            
+            if username in user_dict:
+                st.error("User already exists.")
+            else:
+                sheet1.append_row([username, password])
+                st.success("Registration successful!")
+
+# === MAIN CONTENT AREA ===
+st.markdown("<div class='main'>", unsafe_allow_html=True)
 
 if st.session_state.user == "admin":
-    st.subheader("📊 Admin Dashboard")
-    headers = data[0].keys()
-    st.dataframe(df, use_container_width=True)
-
-    st.markdown("## 📈 Daily Analytics")
-    col1, col2 = st.columns(2)
-
+    # ADMIN DASHBOARD
+    st.title("📊 Admin Dashboard")
+    
+    # Connect to sheets
+    sheet1, sheet2 = connect_to_google_sheets()
+    data = sheet2.get_all_records()
+    df = pd.DataFrame(data)
+    
+    # Metrics Overview
+    st.subheader("📈 Employee Overview")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_employees = len(sheet1.get_all_values()) - 1  # Subtract header
+    active_today = len(df)
+    on_break = len(df[df['Break Start'].notna() & df['Break End'].isna()])
+    completed = len(df[df['Status'] == "✅ Complete"])
+    
     with col1:
-        if not df.empty:
-            bar_fig = px.bar(df, x="Employee Name", y="Total Work Time", title="Work Duration per Employee", color="Status")
-            st.plotly_chart(bar_fig, use_container_width=True)
-
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Total Employees</h3>
+            <h1>{total_employees}</h1>
+        </div>
+        """, unsafe_allow_html=True)
+    
     with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Active Today</h3>
+            <h1>{active_today}</h1>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>On Break</h3>
+            <h1>{on_break}</h1>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Completed</h3>
+            <h1>{completed}</h1>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Employee Directory
+    st.subheader("👥 Employee Directory")
+    st.dataframe(df, use_container_width=True)
+    
+    # Analytics Section
+    st.subheader("📊 Analytics")
+    tab1, tab2 = st.tabs(["Work Duration", "Status Distribution"])
+    
+    with tab1:
+        if not df.empty:
+            bar_fig = px.bar(
+                df, 
+                x="Employee Name", 
+                y="Total Work Time", 
+                title="Work Duration per Employee", 
+                color="Status",
+                height=400
+            )
+            st.plotly_chart(bar_fig, use_container_width=True)
+    
+    with tab2:
         if not df.empty:
             status_count = df["Status"].value_counts().reset_index()
-            pie_fig = px.pie(status_count, names="index", values="Status", title="Work Completion Status")
+            pie_fig = px.pie(
+                status_count, 
+                names="index", 
+                values="Status", 
+                title="Work Completion Status",
+                height=400
+            )
             st.plotly_chart(pie_fig, use_container_width=True)
-
-    st.markdown("### 📤 Export & Email Report")
+    
+    # Reports Section
+    st.subheader("📤 Reports")
+    report_col1, report_col2 = st.columns([3, 1])
+    
+    with report_col1:
+        email_to = st.text_input("Send report to email:")
+    
+    with report_col2:
+        st.write("")  # Spacer
+        st.write("")  # Spacer
+        if st.button("✉️ Email Report"):
+            if not email_to:
+                st.warning("Enter a valid email.")
+            else:
+                try:
+                    file_path = export_to_csv(sheet2)
+                    send_email_with_csv(email_to, file_path)
+                    st.success("Report emailed successfully.")
+                except Exception as e:
+                    st.error(f"Failed to send email: {e}")
+    
     if st.button("📥 Export as CSV"):
-        csv_file = export_to_csv(sheet)
+        csv_file = export_to_csv(sheet2)
         st.success(f"Exported: {csv_file}")
 
-    email_to = st.text_input("Send report to email:")
-    if st.button("✉️ Email Report"):
-        if not email_to:
-            st.warning("Enter a valid email.")
-        else:
-            try:
-                file_path = export_to_csv(sheet)
-                send_email_with_csv(email_to, file_path)
-                st.success("Report emailed successfully.")
-            except Exception as e:
-                st.error(f"Failed to send email: {e}")
-
-# === EMPLOYEE TRACKING ===
 elif st.session_state.user:
-    st.subheader(f"Welcome, {st.session_state.user}")
-
-    col1, col2 = st.columns(2)
-    if col1.button("☕ Start Break"):
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        if st.session_state.row_index:
+    # EMPLOYEE DASHBOARD
+    st.title(f"👋 Welcome, {st.session_state.user}")
+    
+    # Connect to sheets
+    _, sheet2 = connect_to_google_sheets()
+    row = sheet2.row_values(st.session_state.row_index)
+    
+    # Status Cards
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        login_time = row[1] if len(row) > 1 else "Not logged in"
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Login Time</h3>
+            <h2>{login_time}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        break_duration = row[5] if len(row) > 5 else "00:00"
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Break Duration</h3>
+            <h2>{break_duration}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        work_time = row[6] if len(row) > 6 else "00:00"
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Work Time</h3>
+            <h2>{work_time}</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Time Tracking Controls
+    st.subheader("⏱ Time Tracking")
+    action_col1, action_col2, action_col3 = st.columns(3)
+    
+    with action_col1:
+        if st.button("☕ Start Break"):
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sheet2.update_cell(st.session_state.row_index, 4, now)
             st.success(f"Break started at {now}")
-        else:
-            st.error("You must login first.")
-
-    if col2.button("🔙 End Break"):
-        if not st.session_state.row_index:
-            st.error("Login first")
-        else:
+            st.experimental_rerun()
+    
+    with action_col2:
+        if st.button("🔙 End Break"):
             row = sheet2.row_values(st.session_state.row_index)
             if not row[3]:
                 st.error("No break started.")
@@ -267,9 +396,10 @@ elif st.session_state.user:
                 sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
                 sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
                 st.success(f"Break ended. Duration: {format_duration(duration)}")
-
-    if st.button("🔒 Logout"):
-        if st.session_state.row_index:
+                st.experimental_rerun()
+    
+    with action_col3:
+        if st.button("🔒 Logout"):
             row = sheet2.row_values(st.session_state.row_index)
             login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
             logout_time = datetime.datetime.now()
@@ -290,7 +420,18 @@ elif st.session_state.user:
             st.success(f"Logged out. Worked: {total_str}")
             st.session_state.user = None
             st.session_state.row_index = None
-        else:
-            st.error("You must login first.")
+            st.experimental_rerun()
 
-st.markdown("""</div>""", unsafe_allow_html=True)
+else:
+    # LANDING PAGE
+    st.title("🌟 PixsEdit Employee Tracker")
+    st.subheader("Luxury Interface ✨ with Live Dashboard")
+    
+    st.markdown("""
+    <div style="text-align: center; padding: 3rem 0;">
+        <h2>Welcome to the Employee Tracker</h2>
+        <p>Please login from the sidebar to access your dashboard</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
