@@ -47,11 +47,9 @@ AVATAR_DIR.mkdir(exist_ok=True)
 def get_system_theme():
     """Detect system theme preference using JavaScript evaluation"""
     try:
-        # Try to get theme preference from browser
         theme = streamlit_js_eval(js_expressions='window.matchMedia("(prefers-color-scheme: dark)").matches', want_output=True)
         return "dark" if theme else "light"
     except:
-        # Fallback based on time of day
         current_hour = datetime.datetime.now().hour
         return "dark" if current_hour < 6 or current_hour >= 18 else "light"
 
@@ -84,7 +82,6 @@ def apply_theme(theme_mode):
             "font_color": "#333333"
         }
     
-    # Base CSS styles
     theme_css = f"""
     <style>
         :root {{
@@ -146,7 +143,6 @@ def apply_theme(theme_mode):
             border: 1px solid var(--border-color);
         }}
         
-        /* Mobile responsiveness */
         @media (max-width: 768px) {{
             .metric-card {{
                 padding: 1rem;
@@ -165,7 +161,6 @@ def apply_theme(theme_mode):
     </style>
     """
     
-    # Apply plotly theme
     plotly_template = {
         'layout': {
             'plot_bgcolor': theme_colors["plot_bg"],
@@ -189,12 +184,10 @@ def setup_page():
             page_icon="🕒"
         )
         
-        # Initialize theme
         if 'theme' not in st.session_state:
             st.session_state.theme = get_system_theme()
             st.session_state.plotly_template = apply_theme(st.session_state.theme)
         
-        # Theme selector in sidebar
         with st.sidebar:
             theme_options = ["System", "Light", "Dark"]
             current_theme = st.session_state.theme.capitalize()
@@ -246,6 +239,14 @@ def evaluate_status(break_str, work_str):
     except:
         return ""
 
+def calculate_overtime(login_time, logout_time, break_mins):
+    """Calculate overtime hours"""
+    standard_hours = 8 * 60  # 8 hour workday in minutes
+    total_mins = (logout_time - login_time).total_seconds() / 60
+    worked_mins = total_mins - break_mins
+    overtime = max(0, worked_mins - standard_hours)
+    return round(overtime / 60, 2)  # Convert to hours with 2 decimal places
+
 def export_to_csv(sheet):
     """Export sheet data to CSV file"""
     try:
@@ -275,9 +276,9 @@ def send_email_with_csv(to_email, file_path):
         with open(file_path, 'rb') as f:
             file_data = f.read()
             msg.add_attachment(file_data, 
-                              maintype="application", 
-                              subtype="octet-stream", 
-                              filename=os.path.basename(file_path))
+                             maintype="application", 
+                             subtype="octet-stream", 
+                             filename=os.path.basename(file_path))
 
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(config["EMAIL_ADDRESS"], config["EMAIL_PASSWORD"])
@@ -297,16 +298,14 @@ def connect_to_google_sheets():
         today = datetime.datetime.now().strftime('%Y-%m-%d')
         sheet_name = f"Daily Logs {today}"
 
-        # Get or create daily logs sheet
         try:
             sheet = spreadsheet.worksheet(sheet_name)
         except:
             sheet = spreadsheet.add_worksheet(title=sheet_name, rows="100", cols="10")
             sheet.append_row(["Employee Name", "Login Time", "Logout Time", 
                             "Break Start", "Break End", "Break Duration", 
-                            "Total Work Time", "Status"])
+                            "Total Work Time", "Status", "Overtime"])
 
-        # Get registered employees sheet
         try:
             users_sheet = spreadsheet.worksheet("Registered Employees")
         except:
@@ -419,7 +418,6 @@ def handle_login(username, password):
             if sheet2 is None:
                 return
                 
-            # Find existing row or create new one
             rows = sheet2.get_all_values()
             st.session_state.row_index = None
             for i, row in enumerate(rows[1:], start=2):  # Skip header
@@ -429,7 +427,7 @@ def handle_login(username, password):
 
             if username != "admin" and st.session_state.row_index is None:
                 now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                sheet2.append_row([username, now, "", "", "", "", "", ""])
+                sheet2.append_row([username, now, "", "", "", "", "", "", ""])
                 st.session_state.row_index = len(sheet2.get_all_values())
             
             st.rerun()
@@ -486,7 +484,6 @@ def render_admin_dashboard():
         if sheet2 is None:
             return
             
-        # Get data with error handling
         try:
             data = sheet2.get_all_records()
             df = pd.DataFrame(data) if data else pd.DataFrame()
@@ -506,13 +503,11 @@ def render_admin_metrics(sheet1, df):
         st.subheader("📈 Employee Overview")
         cols = st.columns(4)
         
-        # Get total employees
         try:
             total_employees = len(sheet1.get_all_values()) - 1  # Subtract header
         except:
             total_employees = 0
         
-        # Calculate metrics
         active_today = len(df) if not df.empty else 0
         on_break = len(df[df['Break Start'].notna() & df['Break End'].isna()]) if not df.empty else 0
         completed = len(df[df['Status'] == "✅ Complete"]) if not df.empty and 'Status' in df.columns else 0
@@ -555,7 +550,7 @@ def render_admin_analytics(df):
             st.warning("No data available for analytics")
             return
             
-        tab1, tab2 = st.tabs(["Work Duration", "Status Distribution"])
+        tab1, tab2, tab3 = st.tabs(["Work Duration", "Status Distribution", "Overtime Analysis"])
         
         with tab1:
             try:
@@ -592,6 +587,27 @@ def render_admin_analytics(df):
                     st.warning("No status data available for pie chart")
             except Exception as e:
                 st.error(f"Failed to create status distribution chart: {str(e)}")
+                
+        with tab3:
+            try:
+                if not df.empty and 'Overtime' in df.columns:
+                    # Convert overtime strings to numeric values
+                    df['Overtime Hours'] = df['Overtime'].apply(lambda x: float(x.split()[0]) if x and isinstance(x, str) else 0)
+                    overtime_fig = px.bar(
+                        df,
+                        x="Employee Name",
+                        y="Overtime Hours",
+                        title="Overtime Hours per Employee",
+                        color="Overtime Hours",
+                        height=400,
+                        template=st.session_state.plotly_template
+                    )
+                    st.plotly_chart(overtime_fig, use_container_width=True)
+                else:
+                    st.warning("No overtime data available")
+            except Exception as e:
+                st.error(f"Failed to create overtime analysis chart: {str(e)}")
+                
     except Exception as e:
         st.error(f"Analytics error: {str(e)}")
 
@@ -600,7 +616,6 @@ def render_reporting_tools(sheet2):
     try:
         st.subheader("📤 Reports")
         
-        # Email report section
         email_col, btn_col = st.columns([3, 1])
         with email_col:
             email_to = st.text_input("Send report to email:", key="report_email")
@@ -619,7 +634,6 @@ def render_reporting_tools(sheet2):
                         else:
                             st.error("Failed to send report")
         
-        # Export CSV section
         if st.button("📥 Export as CSV"):
             with st.spinner("Exporting data..."):
                 csv_file = export_to_csv(sheet2)
@@ -636,7 +650,7 @@ def render_reporting_tools(sheet2):
         st.error(f"Reporting tools error: {str(e)}")
 
 def render_employee_dashboard():
-    """Render the employee dashboard"""
+    """Render the employee dashboard with all new features"""
     try:
         st.title(f"👋 Welcome, {st.session_state.user}")
         
@@ -644,14 +658,14 @@ def render_employee_dashboard():
         if sheet2 is None:
             return
             
-        # Get employee data
-        try:
-            row = sheet2.row_values(st.session_state.row_index)
-        except:
-            row = []
+        row = sheet2.row_values(st.session_state.row_index)
         
         render_employee_metrics(row)
         render_time_tracking_controls(sheet2, row)
+        render_daily_summary(sheet2, row)
+        show_break_history(sheet2)
+        show_productivity_tips(row)
+        
     except Exception as e:
         st.error(f"Employee dashboard error: {str(e)}")
 
@@ -662,8 +676,8 @@ def render_employee_metrics(row):
         
         metrics = [
             ("Login Time", row[1] if len(row) > 1 else "Not logged in"),
-            ("Break Duration", row[5] if len(row) > 5 else "00:00"),
-            ("Work Time", row[6] if len(row) > 6 else "00:00")
+            ("Break Duration", row[5] if len(row) > 5 and row[5] else "00:00"),
+            ("Work Time", row[6] if len(row) > 6 and row[6] else "00:00")
         ]
         
         for col, (title, value) in zip(cols, metrics):
@@ -678,75 +692,165 @@ def render_employee_metrics(row):
         st.error(f"Employee metrics error: {str(e)}")
 
 def render_time_tracking_controls(sheet2, row):
-    """Render time tracking buttons"""
+    """Render time tracking buttons with fixed break functionality"""
     try:
         st.subheader("⏱ Time Tracking")
         cols = st.columns(3)
         
-        actions = [
-            ("☕ Start Break", "start_break"),
-            ("🔙 End Break", "end_break"),
-            ("🔒 Logout", "logout")
-        ]
+        with cols[0]:  # Start Break button
+            if st.button("☕ Start Break"):
+                # Check if break is already ongoing
+                if len(row) > 3 and row[3] and (len(row) <= 5 or not row[5]):
+                    st.warning("Break already in progress!")
+                    return
+                    
+                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Ensure we have enough columns
+                if len(row) < 4:
+                    sheet2.resize(rows=1, cols=9)  # Ensure sheet has enough columns
+                sheet2.update_cell(st.session_state.row_index, 4, now)
+                st.success(f"Break started at {now}")
+                st.rerun()
         
-        for col, (label, action) in zip(cols, actions):
-            with col:
-                if st.button(label):
-                    handle_time_action(sheet2, row, action)
-    except Exception as e:
-        st.error(f"Time tracking error: {str(e)}")
-
-def handle_time_action(sheet2, row, action):
-    """Handle time tracking actions"""
-    try:
-        if action == "start_break":
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            sheet2.update_cell(st.session_state.row_index, 4, now)
-            st.success(f"Break started at {now}")
-            st.rerun()
-            
-        elif action == "end_break":
-            if len(row) <= 3 or not row[3]:
-                st.error("No break started.")
-            else:
+        with cols[1]:  # End Break button
+            if st.button("🔙 End Break"):
+                # Check if break was started but not ended
+                if len(row) <= 3 or not row[3]:
+                    st.error("No break to end!")
+                    return
+                if len(row) > 5 and row[5]:
+                    st.error("Break already ended!")
+                    return
+                    
                 break_start = datetime.datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
                 break_end = datetime.datetime.now()
                 duration = (break_end - break_start).total_seconds() / 60
+                
+                # Ensure we have enough columns
+                if len(row) < 6:
+                    sheet2.resize(rows=1, cols=9)
+                    
                 sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
                 sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
+                
+                # Show warning for long breaks
+                if duration > 60:  # More than 1 hour break
+                    st.warning("Long break detected! Consider shorter breaks for productivity")
+                
                 st.success(f"Break ended. Duration: {format_duration(duration)}")
                 st.rerun()
+        
+        with cols[2]:  # Logout button
+            if st.button("🔒 Logout"):
+                handle_logout(sheet2, row)
                 
-        elif action == "logout":
-            if len(row) <= 1 or not row[1]:
-                st.error("No login time recorded")
-                return
-                
-            login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
-            logout_time = datetime.datetime.now()
-            sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
-
-            break_mins = 0
-            if len(row) > 5 and row[5]:
-                try:
-                    h, m = map(int, row[5].split(":"))
-                    break_mins = h * 60 + m
-                except:
-                    break_mins = 0
-
-            total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
-            total_str = format_duration(total_mins)
-            sheet2.update_cell(st.session_state.row_index, 7, total_str)
-
-            status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
-            sheet2.update_cell(st.session_state.row_index, 8, status)
-
-            st.success(f"Logged out. Worked: {total_str}")
-            st.session_state.user = None
-            st.session_state.row_index = None
-            st.rerun()
     except Exception as e:
-        st.error(f"Action failed: {str(e)}")
+        st.error(f"Time tracking error: {str(e)}")
+
+def handle_logout(sheet2, row):
+    """Handle logout process with proper break time calculation"""
+    try:
+        if len(row) < 2 or not row[1]:  # Check if login time exists
+            st.error("No login time recorded")
+            return
+            
+        login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+        logout_time = datetime.datetime.now()
+        
+        # Update logout time
+        if len(row) < 3:
+            sheet2.resize(rows=1, cols=9)  # Ensure enough columns
+        sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
+
+        # Calculate break duration if break was taken
+        break_mins = 0
+        if len(row) > 5 and row[5]:
+            try:
+                h, m = map(int, row[5].split(":"))
+                break_mins = h * 60 + m
+            except:
+                break_mins = 0
+
+        # Calculate total work time (minus break time)
+        total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
+        total_str = format_duration(total_mins)
+        
+        # Ensure we have columns for work time and status
+        if len(row) < 7:
+            sheet2.resize(rows=1, cols=9)
+        if len(row) < 8:
+            sheet2.resize(rows=1, cols=9)
+            
+        sheet2.update_cell(st.session_state.row_index, 7, total_str)
+        
+        # Evaluate and update status
+        status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
+        sheet2.update_cell(st.session_state.row_index, 8, status)
+
+        # Calculate and store overtime
+        overtime = calculate_overtime(login_time, logout_time, break_mins)
+        if len(row) < 9:
+            sheet2.resize(rows=1, cols=9)
+        sheet2.update_cell(st.session_state.row_index, 9, f"{overtime} hours")
+
+        st.success(f"Logged out. Worked: {total_str}")
+        st.session_state.user = None
+        st.session_state.row_index = None
+        st.rerun()
+    except Exception as e:
+        st.error(f"Logout error: {str(e)}")
+
+def render_daily_summary(sheet2, row):
+    """Show summary of today's work"""
+    try:
+        if len(row) > 6 and row[6]:  # Work time exists
+            st.subheader("📝 Today's Summary")
+            cols = st.columns(3)
+            with cols[0]:
+                st.metric("Work Time", row[6])
+            with cols[1]:
+                st.metric("Break Time", row[5] if len(row) > 5 and row[5] else "00:00")
+            with cols[2]:
+                overtime = row[8] if len(row) > 8 and row[8] else "0 hours"
+                st.metric("Overtime", overtime)
+    except Exception as e:
+        st.error(f"Daily summary error: {str(e)}")
+
+def show_break_history(sheet2):
+    """Display past break patterns"""
+    try:
+        data = sheet2.get_all_records()
+        df = pd.DataFrame(data)
+        
+        if not df.empty and 'Break Duration' in df.columns:
+            st.subheader("⏳ Break History")
+            # Convert break duration to minutes for analysis
+            df['Break Minutes'] = df['Break Duration'].apply(
+                lambda x: int(x.split(':')[0]) * 60 + int(x.split(':')[1]) if x and ':' in x else 0
+            )
+            
+            fig = px.line(df, x='Login Time', y='Break Minutes', 
+                         title="Your Break Patterns Over Time",
+                         template=st.session_state.plotly_template)
+            st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"Break history error: {str(e)}")
+
+def show_productivity_tips(row):
+    """Contextual productivity suggestions"""
+    try:
+        if len(row) > 5 and row[5]:  # If break data exists
+            try:
+                h, m = map(int, row[5].split(':'))
+                total_mins = h * 60 + m
+                if total_mins < 30:
+                    st.info("💡 Tip: Consider taking longer breaks for better productivity")
+                elif total_mins > 60:
+                    st.info("💡 Tip: Frequent shorter breaks are better than one long break")
+            except:
+                pass
+    except Exception as e:
+        st.error(f"Productivity tips error: {str(e)}")
 
 def render_landing_page():
     """Render the landing page for non-logged in users"""
