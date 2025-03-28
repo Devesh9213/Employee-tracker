@@ -772,12 +772,14 @@ def render_time_tracking_controls(sheet, employee: EmployeeRecord):
                         duration = (break_end - break_start).total_seconds() / 60
                         formatted_duration = format_duration(duration)
 
+                        # Update break end and duration in the sheet
                         sheet.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
                         sheet.update_cell(st.session_state.row_index, 6, formatted_duration)
 
-                        if duration > BREAK_WARNING_THRESHOLD:
-                            st.warning("Long break detected! Try shorter, frequent breaks instead.")
-                        
+                        # Alert if break exceeds allowed limit
+                        if duration > MAX_BREAK_MINUTES:
+                            st.warning(f"⚠️ Break exceeded 50 minutes! You took {formatted_duration}.")
+
                         st.success(f"Break ended. Duration: {formatted_duration}")
                         st.rerun()
                     except Exception as e:
