@@ -1,3 +1,4 @@
 gspread
 oauth2client
 plotly
+streamlit-js-eval
