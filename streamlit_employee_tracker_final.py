@@ -746,44 +746,58 @@ def render_time_tracking_controls(sheet, employee: EmployeeRecord):
     try:
         st.subheader("⏱ Time Tracking")
         cols = st.columns(3)
-        
+
         with cols[0]:  # Start Break button
             if st.button("☕ Start Break"):
                 if employee.break_start and not employee.break_end:
                     st.warning("Break already in progress!")
-                    return
-                    
-                sheet.update_cell(st.session_state.row_index, 4, get_current_datetime_str())
-                st.success(f"Break started at {get_current_datetime_str()}")
-                st.rerun()
-        
+                    if employee.break_start and not employee.break_end:
+    st.warning("Break already in progress!")
+else:
+    current_time = get_current_datetime_str()
+    sheet.update_cell(st.session_state.row_index, 4, current_time)  # Break Start
+    sheet.update_cell(st.session_state.row_index, 5, "")            # Clear Break End
+    sheet.update_cell(st.session_state.row_index, 6, "")            # Clear Duration
+    st.success(f"Break started at {current_time}")
+    st.rerun()
+                elif employee.break_start and employee.break_end:
+                    st.warning("You've already taken a break today.")
+                else:
+                    current_time = get_current_datetime_str()
+                    sheet.update_cell(st.session_state.row_index, 4, current_time)
+                    st.success(f"Break started at {current_time}")
+                    st.rerun()
+
         with cols[1]:  # End Break button
             if st.button("🔙 End Break"):
                 if not employee.break_start:
-                    st.error("No break to end!")
-                    return
-                if employee.break_end:
-                    st.error("Break already ended!")
-                    return
-                    
-                break_start = datetime.datetime.strptime(employee.break_start, "%Y-%m-%d %H:%M:%S")
-                break_end = datetime.datetime.now()
-                duration = (break_end - break_start).total_seconds() / 60
-                
-                sheet.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
-                sheet.update_cell(st.session_state.row_index, 6, format_duration(duration))
-                
-                # Show warning for long breaks
-                if duration > BREAK_WARNING_THRESHOLD:
-                    st.warning("Long break detected! Consider shorter breaks for productivity")
-                
-                st.success(f"Break ended. Duration: {format_duration(duration)}")
-                st.rerun()
-        
+                    st.warning("No break has been started.")
+                elif employee.break_end:
+                    st.warning("Break already ended!")
+                else:
+                    try:
+                        break_start = datetime.datetime.strptime(employee.break_start, "%Y-%m-%d %H:%M:%S")
+                        break_end = datetime.datetime.now()
+                        duration = (break_end - break_start).total_seconds() / 60
+                        formatted_duration = format_duration(duration)
+
+                        # Update break end and duration in the sheet
+                        sheet.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
+                        sheet.update_cell(st.session_state.row_index, 6, formatted_duration)
+
+                        # Alert if break exceeds allowed limit
+                        if duration > MAX_BREAK_MINUTES:
+                            st.warning(f"⚠️ Break exceeded 50 minutes! You took {formatted_duration}.")
+
+                        st.success(f"Break ended. Duration: {formatted_duration}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Break end failed: {str(e)}")
+
         with cols[2]:  # Logout button
             if st.button("🔒 Logout"):
                 handle_logout(sheet, employee)
-                
+
     except Exception as e:
         st.error(f"Time tracking error: {str(e)}")
 
@@ -927,4 +941,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-edit this code
