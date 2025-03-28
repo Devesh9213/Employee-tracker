@@ -1165,14 +1165,43 @@ def render_main_content():
         if st.session_state.user == "admin":
             AdminDashboard.render()
         elif st.session_state.user:
-            EmployeeDashboard.render()
+            # Connect to Google Sheets and get employee record
+            _, sheet = connect_to_google_sheets()
+            if sheet is None:
+                st.error("Failed to connect to Google Sheets")
+                return
+                
+            # Get employee record
+            if st.session_state.row_index is None:
+                st.error("Employee record not found")
+                return
+                
+            employee = get_employee_record(sheet, st.session_state.row_index)
+            if not employee.name:
+                st.error("Failed to load employee data")
+                return
+            
+            # Render employee dashboard components
+            st.title(f"👤 {employee.name}'s Dashboard")
+            
+            # Time tracking controls
+            EmployeeDashboard.render_time_tracking_controls(sheet, employee)
+            
+            # Daily summary
+            EmployeeDashboard.render_daily_summary(employee)
+            
+            # Break history and productivity tips
+            EmployeeDashboard.show_break_history(sheet)
+            EmployeeDashboard.show_productivity_tips(employee)
+            
         else:
             LandingPage.render()
             
         st.markdown("</div>", unsafe_allow_html=True)
+        
     except Exception as e:
-        logger.error(f"Content rendering error: {str(e)}")
-        st.error("Failed to load page content")
+        logger.error(f"Content rendering error: {str(e)}", exc_info=True)
+        st.error("Failed to load page content. Please refresh the page.")
 
 # ====================
 # MAIN APP EXECUTION
