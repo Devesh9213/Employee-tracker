@@ -748,21 +748,12 @@ def render_time_tracking_controls(sheet, employee: EmployeeRecord):
         cols = st.columns(3)
 
         with cols[0]:  # Start Break button
-            if st.button("☕ Start Break"):
+                        if st.button("☕ Start Break"):
                 if employee.break_start and not employee.break_end:
                     st.warning("Break already in progress!")
-                    if employee.break_start and not employee.break_end:
-    st.warning("Break already in progress!")
-else:
-    current_time = get_current_datetime_str()
-    sheet.update_cell(st.session_state.row_index, 4, current_time)  # Break Start
-    sheet.update_cell(st.session_state.row_index, 5, "")            # Clear Break End
-    sheet.update_cell(st.session_state.row_index, 6, "")            # Clear Duration
-    st.success(f"Break started at {current_time}")
-    st.rerun()
                 elif employee.break_start and employee.break_end:
                     st.warning("You've already taken a break today.")
-                else:
+                    else:
                     current_time = get_current_datetime_str()
                     sheet.update_cell(st.session_state.row_index, 4, current_time)
                     st.success(f"Break started at {current_time}")
