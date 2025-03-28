@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import pandas as pd
 import plotly.express as px
+from streamlit_js_eval import streamlit_js_eval
 
 # ====================
 # CONFIGURATION
@@ -41,6 +42,142 @@ AVATAR_DIR = config["AVATAR_DIR"]
 AVATAR_DIR.mkdir(exist_ok=True)
 
 # ====================
+# THEME MANAGEMENT
+# ====================
+def get_system_theme():
+    """Detect system theme preference using JavaScript evaluation"""
+    try:
+        # Try to get theme preference from browser
+        theme = streamlit_js_eval(js_expressions='window.matchMedia("(prefers-color-scheme: dark)").matches', want_output=True)
+        return "dark" if theme else "light"
+    except:
+        # Fallback based on time of day
+        current_hour = datetime.datetime.now().hour
+        return "dark" if current_hour < 6 or current_hour >= 18 else "light"
+
+def apply_theme(theme_mode):
+    """Apply the selected theme with responsive design"""
+    if theme_mode == "dark":
+        theme_colors = {
+            "primary": "#1e1e1e",
+            "secondary": "#2d2d2d",
+            "text": "#f5f5f5",
+            "card": "#2d2d2d",
+            "button": "#333333",
+            "button_text": "#ffffff",
+            "border": "#444444",
+            "plot_bg": "#1e1e1e",
+            "paper_bg": "#1e1e1e",
+            "font_color": "#f5f5f5"
+        }
+    else:
+        theme_colors = {
+            "primary": "#f6f9fc",
+            "secondary": "#ffffff",
+            "text": "#333333",
+            "card": "#ffffff",
+            "button": "linear-gradient(90deg, #007cf0, #00dfd8)",
+            "button_text": "white",
+            "border": "#e0e0e0",
+            "plot_bg": "#ffffff",
+            "paper_bg": "#ffffff",
+            "font_color": "#333333"
+        }
+    
+    # Base CSS styles
+    theme_css = f"""
+    <style>
+        :root {{
+            --primary-bg: {theme_colors["primary"]};
+            --secondary-bg: {theme_colors["secondary"]};
+            --text-color: {theme_colors["text"]};
+            --card-bg: {theme_colors["card"]};
+            --button-bg: {theme_colors["button"]};
+            --button-text: {theme_colors["button_text"]};
+            --border-color: {theme_colors["border"]};
+        }}
+        
+        html, body, .main {{
+            background-color: var(--primary-bg);
+            color: var(--text-color);
+        }}
+        
+        .stApp {{
+            background-color: var(--primary-bg);
+        }}
+        
+        .metric-card {{
+            background-color: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 1px solid var(--border-color);
+        }}
+        
+        .stButton>button {{
+            background: var(--button-bg);
+            color: var(--button-text);
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            border: none;
+            transition: all 0.3s ease;
+        }}
+        
+        .stButton>button:hover {{
+            opacity: 0.9;
+            transform: scale(1.02);
+        }}
+        
+        .stTextInput>div>div>input, 
+        .stTextArea>div>div>textarea,
+        .stSelectbox>div>div>select {{
+            background-color: var(--secondary-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }}
+        
+        .stDataFrame {{
+            background-color: var(--secondary-bg);
+        }}
+        
+        .stAlert {{
+            background-color: var(--secondary-bg);
+            border: 1px solid var(--border-color);
+        }}
+        
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {{
+            .metric-card {{
+                padding: 1rem;
+                margin-bottom: 0.5rem;
+            }}
+            
+            .stButton>button {{
+                padding: 0.4rem 0.8rem;
+                font-size: 0.9rem;
+            }}
+            
+            .column {{
+                padding: 0.5rem !important;
+            }}
+        }}
+    </style>
+    """
+    
+    # Apply plotly theme
+    plotly_template = {
+        'layout': {
+            'plot_bgcolor': theme_colors["plot_bg"],
+            'paper_bgcolor': theme_colors["paper_bg"],
+            'font': {'color': theme_colors["font_color"]}
+        }
+    }
+    
+    st.markdown(theme_css, unsafe_allow_html=True)
+    return plotly_template
+
+# ====================
 # PAGE SETUP
 # ====================
 def setup_page():
@@ -52,73 +189,28 @@ def setup_page():
             page_icon="🕒"
         )
         
-        # Auto theme based on time of day
-        current_hour = datetime.datetime.now().hour
-        auto_dark = current_hour < 6 or current_hour >= 18
-        dark_mode = st.sidebar.toggle("🌙 Dark Mode", value=auto_dark)
+        # Initialize theme
+        if 'theme' not in st.session_state:
+            st.session_state.theme = get_system_theme()
+            st.session_state.plotly_template = apply_theme(st.session_state.theme)
         
-        if dark_mode:
-            apply_dark_theme()
-        else:
-            apply_light_theme()
+        # Theme selector in sidebar
+        with st.sidebar:
+            theme_options = ["System", "Light", "Dark"]
+            current_theme = st.session_state.theme.capitalize()
+            selected_theme = st.selectbox(
+                "Theme",
+                theme_options,
+                index=theme_options.index(current_theme) if current_theme in theme_options else 0
+            )
+            
+            if selected_theme.lower() != st.session_state.theme:
+                st.session_state.theme = selected_theme.lower()
+                st.session_state.plotly_template = apply_theme(st.session_state.theme)
+                st.rerun()
+            
     except Exception as e:
         st.error(f"Page setup error: {str(e)}")
-
-def apply_dark_theme():
-    """Apply dark theme styling"""
-    st.markdown("""
-    <style>
-        .main {
-            background-color: #1e1e1e;
-            color: #f5f5f5;
-            padding: 2rem;
-            border-radius: 1rem;
-        }
-        .stButton>button {
-            background-color: #333333 !important;
-            color: #ffffff !important;
-        }
-        .metric-card {
-            background-color: #2d2d2d;
-            padding: 1.5rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-        }
-        .stAlert {
-            border-radius: 0.5rem;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
-def apply_light_theme():
-    """Apply light theme styling"""
-    st.markdown("""
-    <style>
-    .main {
-        background-color: #f6f9fc;
-        padding: 2rem;
-        border-radius: 1rem;
-        box-shadow: 0 0 20px rgba(0,0,0,0.1);
-    }
-    .stButton>button {
-        border-radius: 0.5rem;
-        padding: 0.5rem 1rem;
-        background: linear-gradient(90deg, #007cf0, #00dfd8);
-        color: white;
-        border: none;
-    }
-    .metric-card {
-        background-color: white;
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin-bottom: 1rem;
-    }
-    .stAlert {
-        border-radius: 0.5rem;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
 # ====================
 # UTILITY FUNCTIONS
@@ -182,8 +274,10 @@ def send_email_with_csv(to_email, file_path):
 
         with open(file_path, 'rb') as f:
             file_data = f.read()
-            msg.add_attachment(file_data, maintype="application", subtype="octet-stream", 
-                             filename=os.path.basename(file_path))
+            msg.add_attachment(file_data, 
+                              maintype="application", 
+                              subtype="octet-stream", 
+                              filename=os.path.basename(file_path))
 
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(config["EMAIL_ADDRESS"], config["EMAIL_PASSWORD"])
@@ -235,6 +329,10 @@ def init_session_state():
         st.session_state.row_index = None
     if 'avatar_uploaded' not in st.session_state:
         st.session_state.avatar_uploaded = False
+    if 'theme' not in st.session_state:
+        st.session_state.theme = get_system_theme()
+    if 'plotly_template' not in st.session_state:
+        st.session_state.plotly_template = apply_theme(st.session_state.theme)
 
 # ====================
 # SIDEBAR COMPONENTS
@@ -244,7 +342,7 @@ def render_sidebar():
     with st.sidebar:
         try:
             st.title("PixsEdit Tracker")
-            st.caption("🌓 Auto theme applied based on time of day")
+            st.caption(f"🌓 Current theme: {st.session_state.theme.capitalize()}")
             
             render_avatar_section()
             render_login_section()
@@ -406,7 +504,7 @@ def render_admin_metrics(sheet1, df):
     """Render admin metrics cards"""
     try:
         st.subheader("📈 Employee Overview")
-        col1, col2, col3, col4 = st.columns(4)
+        cols = st.columns(4)
         
         # Get total employees
         try:
@@ -419,37 +517,21 @@ def render_admin_metrics(sheet1, df):
         on_break = len(df[df['Break Start'].notna() & df['Break End'].isna()]) if not df.empty else 0
         completed = len(df[df['Status'] == "✅ Complete"]) if not df.empty and 'Status' in df.columns else 0
         
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>Total Employees</h3>
-                <h1>{total_employees}</h1>
-            </div>
-            """, unsafe_allow_html=True)
+        metrics = [
+            ("Total Employees", total_employees),
+            ("Active Today", active_today),
+            ("On Break", on_break),
+            ("Completed", completed)
+        ]
         
-        with col2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>Active Today</h3>
-                <h1>{active_today}</h1>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>On Break</h3>
-                <h1>{on_break}</h1>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>Completed</h3>
-                <h1>{completed}</h1>
-            </div>
-            """, unsafe_allow_html=True)
+        for col, (title, value) in zip(cols, metrics):
+            with col:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h3>{title}</h3>
+                    <h1>{value}</h1>
+                </div>
+                """, unsafe_allow_html=True)
     except Exception as e:
         st.error(f"Metrics error: {str(e)}")
 
@@ -484,7 +566,8 @@ def render_admin_analytics(df):
                         y="Total Work Time", 
                         title="Work Duration per Employee", 
                         color="Status",
-                        height=400
+                        height=400,
+                        template=st.session_state.plotly_template
                     )
                     st.plotly_chart(bar_fig, use_container_width=True)
                 else:
@@ -501,7 +584,8 @@ def render_admin_analytics(df):
                         names="index", 
                         values="Status", 
                         title="Work Completion Status",
-                        height=400
+                        height=400,
+                        template=st.session_state.plotly_template
                     )
                     st.plotly_chart(pie_fig, use_container_width=True)
                 else:
@@ -574,34 +658,22 @@ def render_employee_dashboard():
 def render_employee_metrics(row):
     """Render employee metrics cards"""
     try:
-        col1, col2, col3 = st.columns(3)
+        cols = st.columns(3)
         
-        with col1:
-            login_time = row[1] if len(row) > 1 else "Not logged in"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>Login Time</h3>
-                <h2>{login_time}</h2>
-            </div>
-            """, unsafe_allow_html=True)
+        metrics = [
+            ("Login Time", row[1] if len(row) > 1 else "Not logged in"),
+            ("Break Duration", row[5] if len(row) > 5 else "00:00"),
+            ("Work Time", row[6] if len(row) > 6 else "00:00")
+        ]
         
-        with col2:
-            break_duration = row[5] if len(row) > 5 else "00:00"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>Break Duration</h3>
-                <h2>{break_duration}</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            work_time = row[6] if len(row) > 6 else "00:00"
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>Work Time</h3>
-                <h2>{work_time}</h2>
-            </div>
-            """, unsafe_allow_html=True)
+        for col, (title, value) in zip(cols, metrics):
+            with col:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h3>{title}</h3>
+                    <h2>{value}</h2>
+                </div>
+                """, unsafe_allow_html=True)
     except Exception as e:
         st.error(f"Employee metrics error: {str(e)}")
 
@@ -609,65 +681,72 @@ def render_time_tracking_controls(sheet2, row):
     """Render time tracking buttons"""
     try:
         st.subheader("⏱ Time Tracking")
-        action_col1, action_col2, action_col3 = st.columns(3)
+        cols = st.columns(3)
         
-        with action_col1:
-            if st.button("☕ Start Break"):
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                sheet2.update_cell(st.session_state.row_index, 4, now)
-                st.success(f"Break started at {now}")
-                st.rerun()
+        actions = [
+            ("☕ Start Break", "start_break"),
+            ("🔙 End Break", "end_break"),
+            ("🔒 Logout", "logout")
+        ]
         
-        with action_col2:
-            if st.button("🔙 End Break"):
-                if len(row) <= 3 or not row[3]:
-                    st.error("No break started.")
-                else:
-                    try:
-                        break_start = datetime.datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
-                        break_end = datetime.datetime.now()
-                        duration = (break_end - break_start).total_seconds() / 60
-                        sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
-                        sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
-                        st.success(f"Break ended. Duration: {format_duration(duration)}")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error ending break: {str(e)}")
-        
-        with action_col3:
-            if st.button("🔒 Logout"):
-                try:
-                    if len(row) <= 1 or not row[1]:
-                        st.error("No login time recorded")
-                        return
-                        
-                    login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
-                    logout_time = datetime.datetime.now()
-                    sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
-
-                    break_mins = 0
-                    if len(row) > 5 and row[5]:
-                        try:
-                            h, m = map(int, row[5].split(":"))
-                            break_mins = h * 60 + m
-                        except:
-                            break_mins = 0
-
-                    total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
-                    total_str = format_duration(total_mins)
-                    sheet2.update_cell(st.session_state.row_index, 7, total_str)
-
-                    status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
-                    sheet2.update_cell(st.session_state.row_index, 8, status)
-
-                    st.success(f"Logged out. Worked: {total_str}")
-                    st.session_state.user = None
-                    st.session_state.row_index = None
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Logout error: {str(e)}")
+        for col, (label, action) in zip(cols, actions):
+            with col:
+                if st.button(label):
+                    handle_time_action(sheet2, row, action)
     except Exception as e:
         st.error(f"Time tracking error: {str(e)}")
+
+def handle_time_action(sheet2, row, action):
+    """Handle time tracking actions"""
+    try:
+        if action == "start_break":
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            sheet2.update_cell(st.session_state.row_index, 4, now)
+            st.success(f"Break started at {now}")
+            st.rerun()
+            
+        elif action == "end_break":
+            if len(row) <= 3 or not row[3]:
+                st.error("No break started.")
+            else:
+                break_start = datetime.datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
+                break_end = datetime.datetime.now()
+                duration = (break_end - break_start).total_seconds() / 60
+                sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
+                sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
+                st.success(f"Break ended. Duration: {format_duration(duration)}")
+                st.rerun()
+                
+        elif action == "logout":
+            if len(row) <= 1 or not row[1]:
+                st.error("No login time recorded")
+                return
+                
+            login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+            logout_time = datetime.datetime.now()
+            sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
+
+            break_mins = 0
+            if len(row) > 5 and row[5]:
+                try:
+                    h, m = map(int, row[5].split(":"))
+                    break_mins = h * 60 + m
+                except:
+                    break_mins = 0
+
+            total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
+            total_str = format_duration(total_mins)
+            sheet2.update_cell(st.session_state.row_index, 7, total_str)
+
+            status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
+            sheet2.update_cell(st.session_state.row_index, 8, status)
+
+            st.success(f"Logged out. Worked: {total_str}")
+            st.session_state.user = None
+            st.session_state.row_index = None
+            st.rerun()
+    except Exception as e:
+        st.error(f"Action failed: {str(e)}")
 
 def render_landing_page():
     """Render the landing page for non-logged in users"""
