@@ -837,51 +837,9 @@ class AdminDashboard:
             st.error("Failed to load reporting tools")
 
 # ====================
-# EMPLOYEE DASHBOARD
+# EMPLOYEE DASHBOARD - TIME TRACKING CONTROLS
 # ====================
 class EmployeeDashboard:
-    """Employee dashboard components"""
-    @staticmethod
-    def render():
-        """Render the employee dashboard"""
-        try:
-            st.title(f"👋 Welcome, {st.session_state.user}")
-            
-            _, sheet2 = connect_to_google_sheets()
-            if sheet2 is None:
-                return
-                
-            employee = get_employee_record(sheet2, st.session_state.row_index)
-            
-            EmployeeDashboard.render_metrics(employee)
-            EmployeeDashboard.render_time_tracking_controls(sheet2, employee)
-            EmployeeDashboard.render_daily_summary(employee)
-            EmployeeDashboard.show_break_history(sheet2)
-            EmployeeDashboard.show_productivity_tips(employee)
-            
-        except Exception as e:
-            logger.error(f"Employee dashboard error: {str(e)}")
-            st.error("Failed to load employee dashboard")
-
-    @staticmethod
-    def render_metrics(employee: EmployeeRecord):
-        """Render employee metrics cards"""
-        try:
-            cols = st.columns(3)
-            
-            metrics = [
-                ("Login Time", employee.login_time or "Not logged in", "When you started work"),
-                ("Break Duration", employee.break_duration or "00:00", "Total break time today"),
-                ("Work Time", employee.work_time or "00:00", "Time spent working")
-            ]
-            
-            for col, (title, value, help_text) in zip(cols, metrics):
-                with col:
-                    PageComponents.metric_card(title, value, help_text)
-        except Exception as e:
-            logger.error(f"Employee metrics error: {str(e)}")
-            st.error("Failed to load employee metrics")
-
     @staticmethod
     def render_time_tracking_controls(sheet, employee: EmployeeRecord):
         """Render time tracking buttons with fixed break functionality"""
@@ -889,43 +847,136 @@ class EmployeeDashboard:
             st.subheader("⏱ Time Tracking")
             cols = st.columns(3)
             
+            # Get current time for consistency
+            current_time = get_current_datetime_str()
+            
             with cols[0]:  # Start Break button
-                if PageComponents.time_tracking_button("Start Break", TimeAction.BREAK_START, 
-                                                     disabled=bool(employee.break_start and not employee.break_end)):
+                break_disabled = bool(employee.break_start and not employee.break_end)
+                if st.button("☕ Start Break", disabled=break_disabled,
+                            help="Start your break period"):
                     if employee.break_start and not employee.break_end:
                         st.warning("Break already in progress!")
                     else:
-                        if update_employee_record(sheet, st.session_state.row_index, TimeAction.BREAK_START):
-                            st.success(f"Break started at {get_current_datetime_str()}")
+                        try:
+                            # Update break start time
+                            sheet.update_cell(st.session_state.row_index, 4, current_time)
+                            st.success(f"Break started at {current_time}")
                             st.rerun()
+                        except Exception as e:
+                            logger.error(f"Failed to start break: {str(e)}")
+                            st.error("Failed to record break start. Please try again.")
             
             with cols[1]:  # End Break button
-                if PageComponents.time_tracking_button("End Break", TimeAction.BREAK_END, 
-                                                     disabled=not employee.break_start or bool(employee.break_end)):
+                end_break_disabled = not employee.break_start or bool(employee.break_end)
+                if st.button("🔙 End Break", disabled=end_break_disabled,
+                           help="End your current break"):
                     if not employee.break_start:
                         st.error("No break to end!")
                     elif employee.break_end:
                         st.error("Break already ended!")
                     else:
-                        if update_employee_record(sheet, st.session_state.row_index, TimeAction.BREAK_END):
-                            record = get_employee_record(sheet, st.session_state.row_index)
-                            duration = time_str_to_minutes(record.break_duration)
+                        try:
+                            # Update break end time
+                            sheet.update_cell(st.session_state.row_index, 5, current_time)
+                            
+                            # Calculate break duration
+                            if employee.break_start:
+                                duration = calculate_time_difference(
+                                    employee.break_start, 
+                                    current_time
+                                )
+                                sheet.update_cell(
+                                    st.session_state.row_index, 
+                                    6, 
+                                    format_duration(duration)
+                                )
                             
                             # Show warning for long breaks
                             if duration > BREAK_WARNING_THRESHOLD:
                                 st.warning("Long break detected! Consider shorter breaks for productivity")
                             
-                            st.success(f"Break ended. Duration: {record.break_duration}")
+                            st.success(f"Break ended. Duration: {format_duration(duration)}")
                             st.rerun()
+                        except Exception as e:
+                            logger.error(f"Failed to end break: {str(e)}")
+                            st.error("Failed to record break end. Please try again.")
             
             with cols[2]:  # Logout button
-                if PageComponents.time_tracking_button("Logout", TimeAction.LOGOUT):
-                    EmployeeDashboard.handle_logout(sheet, employee)
-                    
+                if st.button("🔒 Logout", help="Log out and record your work time"):
+                    try:
+                        EmployeeDashboard.handle_logout(sheet, employee)
+                    except Exception as e:
+                        logger.error(f"Logout failed: {str(e)}")
+                        st.error("Failed to complete logout. Please try again.")
+                        
         except Exception as e:
-            logger.error(f"Time tracking error: {str(e)}")
-            st.error("Failed to load time tracking controls")
+            logger.error(f"Time tracking controls error: {str(e)}")
+            st.error("Failed to load time tracking controls. Please refresh the page.")
 
+    @staticmethod
+    def handle_logout(sheet, employee: EmployeeRecord):
+        """Handle logout process with proper break time calculation"""
+        current_time = get_current_datetime_str()
+        
+        if not employee.login_time:
+            st.error("No login time recorded")
+            return
+            
+        try:
+            # Update logout time
+            sheet.update_cell(st.session_state.row_index, 3, current_time)
+
+            # Calculate break duration if break was taken
+            break_mins = 0
+            if employee.break_start and employee.break_end:
+                break_mins = calculate_time_difference(
+                    employee.break_start,
+                    employee.break_end
+                )
+            elif employee.break_start:  # Break started but not ended
+                break_mins = calculate_time_difference(
+                    employee.break_start,
+                    current_time
+                )
+                sheet.update_cell(st.session_state.row_index, 5, current_time)
+                sheet.update_cell(
+                    st.session_state.row_index, 
+                    6, 
+                    format_duration(break_mins)
+                )
+
+            # Calculate total work time (minus break time)
+            total_mins = calculate_time_difference(
+                employee.login_time, 
+                current_time
+            ) - break_mins
+            total_str = format_duration(total_mins)
+            
+            # Update work time
+            sheet.update_cell(st.session_state.row_index, 7, total_str)
+            
+            # Evaluate and update status
+            status = evaluate_status(
+                format_duration(break_mins) if break_mins > 0 else "00:00", 
+                total_str
+            )
+            sheet.update_cell(st.session_state.row_index, 8, status)
+
+            # Calculate and store overtime
+            overtime = calculate_overtime(
+                employee.login_time, 
+                current_time, 
+                break_mins
+            )
+            sheet.update_cell(st.session_state.row_index, 9, f"{overtime} hours")
+
+            st.success(f"Logged out. Worked: {total_str}")
+            SessionStateManager.clear_session()
+            st.rerun()
+            
+        except Exception as e:
+            logger.error(f"Logout processing error: {str(e)}")
+            raise Exception("Failed to complete logout process")
     @staticmethod
     def handle_logout(sheet, employee: EmployeeRecord):
         """Handle logout process with proper break time calculation"""
