@@ -17,13 +17,23 @@ from streamlit.components.v1 import html
 # ====================
 # CONFIGURATION
 # ====================
-def load_config():
+def load_config() -> Optional[Dict[str, Any]]:
+    """Load and validate application configuration from Streamlit secrets.
+    
+    Returns:
+        Dictionary containing configuration if successful, None otherwise.
+    """
     try:
-        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
-                  "https://www.googleapis.com/auth/drive"]
+        # Validate secrets exist
+        if not all(key in st.secrets for key in ["GOOGLE_CREDENTIALS", *CONFIG_KEYS]):
+            st.error("Missing required configuration in secrets.toml")
+            return None
+
+        # Load Google credentials
         creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
         client = gspread.authorize(creds)
+
         return {
             "SPREADSHEET_ID": st.secrets["SPREADSHEET_ID"],
             "EMAIL_ADDRESS": st.secrets["EMAIL_ADDRESS"],
@@ -31,14 +41,11 @@ def load_config():
             "client": client,
             "AVATAR_DIR": Path("avatars"),
         }
+    except json.JSONDecodeError as e:
+        st.error(f"Invalid Google credentials JSON: {str(e)}")
     except Exception as e:
         st.error(f"Configuration error: {str(e)}")
-        st.stop()
-        return None
-
-config = load_config()
-AVATAR_DIR = config["AVATAR_DIR"]
-AVATAR_DIR.mkdir(exist_ok=True)
+    return None
 
 # ====================
 # PAGE SETUP
