@@ -1123,31 +1123,21 @@ def main():
     try:
         init_session_state()
         check_persistent_session()
-
-        # Auto-refresh every 60 seconds
         st_autorefresh(interval=60000)
 
-        
-        render_sidebar()  # Show login/avatar section
+        # Setup UI and theme
+        setup_page()
+        render_sidebar()
 
+        # Show dashboard or login
         if st.session_state.user:
-            render_main_content()  # Show dashboard
+            render_main_content()
         else:
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            keep_logged_in = st.checkbox("Keep me logged in")
-
-            if st.button("Login"):
-                if username == "admin" and password == "admin":
-                    st.session_state.user = username
-                    st.session_state.persistent_login = keep_logged_in
-                    persist_session()
-                    st.experimental_rerun()
-                else:
-                    st.error("Invalid credentials")
+            render_landing_page()  # this shows login inside main screen only
 
     except Exception as e:
         st.error(f"App error: {e}")
+
 
 # ====================
 # Helper for live status styling
