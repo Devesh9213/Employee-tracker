@@ -394,6 +394,45 @@ def init_session_state():
         st.session_state.row_index = None
     if "persistent_login" not in st.session_state:
         st.session_state.persistent_login = False
+def persist_session():
+    html_string = """
+    <script>
+    const storeState = (key, value) => {
+        localStorage.setItem(key, value);
+    }
+
+    if (typeof window !== 'undefined') {
+        if (%s) {
+            storeState('persistent_login', 'true');
+            storeState('username', '%s');
+        } else {
+            storeState('persistent_login', 'false');
+            localStorage.removeItem('username');
+        }
+    }
+    </script>
+    """ % ("true" if st.session_state.get("persistent_login", False) else "false",
+           st.session_state.get("user", ""))
+
+    html(html_string, height=0, width=0)
+
+def check_persistent_session():
+    js_code = """
+    <script>
+    const persistentLogin = localStorage.getItem('persistent_login') === 'true';
+    const username = localStorage.getItem('username');
+    if (persistentLogin && username) {
+        const streamlitDoc = window.parent.document;
+        const input = streamlitDoc.querySelector('input[data-testid=\"stTextInput\"]');
+        if (input) {
+            input.value = username;
+            const event = new Event('input', { bubbles: true });
+            input.dispatchEvent(event);
+        }
+    }
+    </script>
+    """
+    html(js_code, height=0)
 
 # ====================
 # SIDEBAR COMPONENTS
