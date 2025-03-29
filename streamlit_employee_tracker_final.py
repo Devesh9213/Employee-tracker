@@ -23,15 +23,27 @@ def load_config() -> Optional[Dict[str, Any]]:
     
     Returns:
         Dictionary containing configuration if successful, None otherwise.
+        
+    Raises:
+        json.JSONDecodeError: If Google credentials are invalid JSON
+        KeyError: If required secrets are missing
+        Exception: For other unexpected errors
     """
     try:
-        # Validate secrets exist
-        if not all(key in st.secrets for key in ["GOOGLE_CREDENTIALS", *CONFIG_KEYS]):
-            st.error("Missing required configuration in secrets.toml")
+        # Validate required secrets exist
+        required_secrets = ["GOOGLE_CREDENTIALS"] + CONFIG_KEYS
+        missing = [key for key in required_secrets if key not in st.secrets]
+        if missing:
+            st.error(f"Missing required secrets: {', '.join(missing)}")
             return None
 
-        # Load Google credentials
+        # Parse Google credentials
         creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+        if not isinstance(creds_dict, dict):
+            st.error("Google credentials must be a JSON object")
+            return None
+
+        # Create authorized client
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
         client = gspread.authorize(creds)
 
@@ -42,11 +54,16 @@ def load_config() -> Optional[Dict[str, Any]]:
             "client": client,
             "AVATAR_DIR": Path("avatars"),
         }
+
     except json.JSONDecodeError as e:
         st.error(f"Invalid Google credentials JSON: {str(e)}")
+    except KeyError as e:
+        st.error(f"Missing configuration key: {str(e)}")
     except Exception as e:
-        st.error(f"Configuration error: {str(e)}")
+        st.error(f"Unexpected configuration error: {str(e)}")
+    
     return None
+
 
 # ====================
 # PAGE SETUP
