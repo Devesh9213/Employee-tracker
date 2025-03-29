@@ -378,7 +378,7 @@ def render_main_content():
 
 def render_admin_dashboard():
     """Render the admin dashboard."""
-    st.title("📊 Admin Dashboard")
+    st.title("Admin Dashboard")
     sheet1, sheet2 = connect_to_google_sheets()
     if sheet2 is None:
         return
