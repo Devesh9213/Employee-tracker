@@ -883,28 +883,15 @@ def render_landing_page():
 # ====================
 def main():
     """Main application entry point."""
-    try:
-        # Initialize session and setup
-        init_session_state()
-        setup_persistent_session()
-        apply_theme()
-        
-        # Check for persistent session from browser storage
-        if not st.session_state.user and st.session_state.persistent_login:
-            if st.session_state.get('username_from_storage'):
-                st.session_state.user = st.session_state.username_from_storage
-                st.rerun()
-        
-        # Render the appropriate content
-        if st.session_state.user == "admin":
-            render_admin_dashboard()
-        elif st.session_state.user:
-            render_employee_dashboard()
-        else:
-            render_landing_page()
-            
-    except Exception as e:
-        st.error(f"Application error: {str(e)}")
+    init_session_state()
+    
+    if st.session_state.user == "admin":
+        show_admin_dashboard()
+    elif st.session_state.user:
+        show_employee_dashboard()
+    else:
+        show_landing_page()
+        show_login_form()
 
 if __name__ == "__main__":
     main()
