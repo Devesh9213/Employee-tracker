@@ -1,3 +1,6 @@
+# ====================
+# IMPORTS (MUST COME BEFORE STREAMLIT COMMANDS)
+# ====================
 import os
 import datetime
 import csv
@@ -14,10 +17,10 @@ import time
 from streamlit.components.v1 import html
 
 # ====================
-# PAGE CONFIGURATION (MUST BE FIRST)
+# PAGE CONFIGURATION (FIRST STREAMLIT COMMAND)
 # ====================
 st.set_page_config(
-    page_title="PixsEdit Employee Tracker",
+    page_title="🌟 PixsEdit Employee Tracker",
     layout="wide",
     page_icon="🕒",
     initial_sidebar_state="expanded"
@@ -50,6 +53,7 @@ def load_config():
 config = load_config()
 AVATAR_DIR = config["AVATAR_DIR"]
 AVATAR_DIR.mkdir(exist_ok=True)
+
 # ====================
 # PERSISTENT SESSION MANAGEMENT
 # ====================
@@ -108,20 +112,8 @@ def update_persistent_session(username, persistent):
     html(js, height=0, width=0)
 
 # ====================
-# PAGE SETUP
+# THEME MANAGEMENT
 # ====================
-def setup_page():
-    """Configure page settings and theme."""
-    st.set_page_config(
-        page_title="🌟 PixsEdit Employee Tracker",
-        layout="wide",
-        page_icon="🕒",
-        initial_sidebar_state="expanded"
-    )
-    
-    # Apply custom CSS
-    apply_theme()
-
 def apply_theme():
     """Apply theme styling based on time of day or user preference."""
     current_hour = datetime.datetime.now().hour
@@ -892,8 +884,8 @@ def main():
     try:
         # Initialize session and setup
         init_session_state()
-        setup_page()
         setup_persistent_session()
+        apply_theme()
         
         # Check for persistent session from browser storage
         if not st.session_state.user and st.session_state.persistent_login:
@@ -914,4 +906,4 @@ def main():
         st.error(f"Application error: {str(e)}")
 
 if __name__ == "__main__":
-    main()
+    main
