@@ -553,7 +553,7 @@ def render_main_content():
         render_landing_page()
 
 def render_admin_dashboard():
-    """Render the admin dashboard."""
+    """Render the admin dashboard with break status indicators."""
     st.title("📊 Admin Dashboard")
     sheet1, sheet2 = connect_to_google_sheets()
     if sheet2 is None:
@@ -562,6 +562,14 @@ def render_admin_dashboard():
     try:
         data = sheet2.get_all_records()
         df = pd.DataFrame(data) if data else pd.DataFrame()
+        
+        # Add 'On Break' status column
+        df['Current Status'] = df.apply(
+            lambda row: "🟢 Working" if pd.isna(row['Break Start']) 
+            else "🟡 On Break" if pd.isna(row['Break End']) 
+            else "🟢 Working",
+            axis=1
+        )
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         df = pd.DataFrame()
@@ -570,6 +578,87 @@ def render_admin_dashboard():
     render_employee_directory(df)
     render_admin_analytics(df)
     render_reporting_tools(sheet2)
+
+def render_employee_directory(df):
+    """Render employee directory table with status indicators."""
+    st.subheader("👥 Employee Directory")
+    if not df.empty:
+        # Format the DataFrame for better display
+        display_df = df.copy()
+        
+        # Colorize status columns
+        display_df['Current Status'] = display_df['Current Status'].apply(
+            lambda x: f"<span style='color: #5cb85c'>{x}</span>" if "Working" in x 
+            else f"<span style='color: #f0ad4e'>{x}</span>"
+        )
+        
+        if 'Status' in display_df.columns:
+            display_df['Status'] = display_df['Status'].apply(
+                lambda x: f"<span style='color: #5cb85c'>{x}</span>" if 'Complete' in str(x) 
+                else f"<span style='color: #d9534f'>{x}</span>"
+            )
+        
+        st.write(display_df.to_html(escape=False), unsafe_allow_html=True)
+    else:
+        st.warning("No employee data available for today")
+
+def render_admin_metrics(sheet1, df):
+    """Render admin metrics cards with break status."""
+    st.subheader("📈 Employee Overview")
+    col1, col2, col3, col4 = st.columns(4)
+
+    try:
+        total_employees = len(sheet1.get_all_values()) - 1
+    except:
+        total_employees = 0
+
+    active_today = len(df) if not df.empty else 0
+    on_break = len(df[df['Current Status'] == "🟡 On Break"]) if not df.empty else 0
+    completed = len(df[df['Status'] == "✅ Complete"]) if not df.empty and "Status" in df.columns else 0
+
+    with col1:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <h3>Total Employees</h3>
+                <h1>{total_employees}</h1>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col2:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <h3>Active Today</h3>
+                <h1>{active_today}</h1>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col3:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <h3>On Break Now</h3>
+                <h1>{on_break}</h1>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col4:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <h3>Completed</h3>
+                <h1>{completed}</h1>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 def render_admin_metrics(sheet1, df):
     """Render admin metrics cards."""
