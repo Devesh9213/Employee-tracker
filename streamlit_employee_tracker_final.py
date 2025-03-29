@@ -47,9 +47,9 @@ AVATAR_DIR.mkdir(exist_ok=True)
 def setup_page():
     """Configure page settings and theme."""
     st.set_page_config(
-        page_title="🌟 PixsEdit Employee Tracker",
+        page_title=" PixsEdit Employee Tracker",
         layout="wide",
-        page_icon="🕒",
+        page_icon="",
         initial_sidebar_state="expanded"
     )
     
