@@ -1120,25 +1120,18 @@ def highlight_row(row):
 # MAIN APP EXECUTION
 # ====================
 def main():
-try:
+    try:
         init_session_state()
         check_persistent_session()
 
         # Auto-refresh every 60 seconds
         st_autorefresh(interval=60000)
 
-        setup_page()  # <-- ensure page theme is applied
-        render_sidebar()
-        render_main_content()
+        setup_page()  # Ensure theme and layout are applied
+        render_sidebar()  # Show login/avatar section
 
         if st.session_state.user:
-            st.write(f"Welcome back, {st.session_state.user}!")
-            if st.button("Logout"):
-                st.session_state.user = None
-                st.session_state.row_index = None
-                st.session_state.persistent_login = False
-                persist_session()
-                st.experimental_rerun()
+            render_main_content()  # Show dashboard
         else:
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
@@ -1152,6 +1145,7 @@ try:
                     st.experimental_rerun()
                 else:
                     st.error("Invalid credentials")
+
     except Exception as e:
         st.error(f"App error: {e}")
 
