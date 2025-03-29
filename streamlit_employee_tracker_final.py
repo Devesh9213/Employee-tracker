@@ -1127,7 +1127,7 @@ def main():
         # Auto-refresh every 60 seconds
         st_autorefresh(interval=60000)
 
-        setup_page()  # Ensure theme and layout are applied
+        
         render_sidebar()  # Show login/avatar section
 
         if st.session_state.user:
