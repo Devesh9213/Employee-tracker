@@ -287,11 +287,11 @@ def evaluate_status(break_str, work_str):
         work_min = to_minutes(work_str) if work_str else 0
 
         if work_min >= 540 and break_min <= 50:
-            return "✅ Complete"
+            return"<span style='color: #5cb85c'>✅ Complete</span>"
         elif break_min > 50:
-            return "❌ Over Break"
+            return "<span style='color: #d9534f'>❌ Over Break</span>"
         else:
-            return "❌ Incomplete"
+            return "<span style='color: #d9534f'>❌ Incomplete</span>"
     except:
         return ""
 
