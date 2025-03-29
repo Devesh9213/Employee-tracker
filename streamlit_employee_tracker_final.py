@@ -7,6 +7,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import smtplib
 from email.message import EmailMessage
+from typing import Optional, Dict, Any, Tuple, List
 import json
 from pathlib import Path
 import pandas as pd
