@@ -12,7 +12,6 @@ import pandas as pd
 import plotly.express as px
 import time
 from streamlit.components.v1 import html
-from streamlit_autorefresh import st_autorefresh
 
 # ====================
 # CONFIGURATION
@@ -42,15 +41,11 @@ config = load_config()
 AVATAR_DIR = config["AVATAR_DIR"]
 AVATAR_DIR.mkdir(exist_ok=True)
 
-# Auto-refresh every 30 seconds for live updates
-st_autorefresh(interval=30 * 1000, key="data_refresh")
-
 # ====================
 # PERSISTENT SESSION MANAGEMENT
 # ====================
 def setup_persistent_session():
     """Initialize and maintain persistent session using browser localStorage."""
-    # Inject JavaScript to handle session persistence
     js = """
     <script>
     // Store session state in localStorage
@@ -302,6 +297,8 @@ def init_session_state():
     if "dark_mode" not in st.session_state:
         current_hour = datetime.datetime.now().hour
         st.session_state.dark_mode = current_hour < 6 or current_hour >= 18
+    if "last_refresh" not in st.session_state:
+        st.session_state.last_refresh = time.time()
 
 # ====================
 # SIDEBAR COMPONENTS
@@ -451,7 +448,7 @@ def render_admin_dashboard():
         
         # Calculate who is currently on break
         df['On Break Now'] = df.apply(lambda row: 
-            pd.notna(row['Break Start']) and pd.isna(row['Break End']), 
+            pd.notna(row.get('Break Start')) and pd.isna(row.get('Break End')), 
             axis=1
         )
     except Exception as e:
@@ -462,6 +459,11 @@ def render_admin_dashboard():
     render_employee_directory(df)
     render_admin_analytics(df)
     render_reporting_tools(sheet2)
+
+    # Auto-refresh logic
+    if time.time() - st.session_state.last_refresh > 30:  # 30 seconds
+        st.session_state.last_refresh = time.time()
+        st.rerun()
 
 def render_admin_metrics(sheet1, df):
     """Render admin metrics cards with live data."""
@@ -542,6 +544,336 @@ def render_employee_directory(df):
         st.dataframe(display_df, use_container_width=True, height=400)
     else:
         st.warning("No employee data available")
+
+def render_admin_analytics(df):
+    """Render admin analytics charts."""
+    st.subheader("📊 Analytics")
+
+    if df.empty or "Status" not in df.columns:
+        st.warning("No data available for analytics")
+        return
+
+    tab1, tab2 = st.tabs(["Work Duration", "Status Distribution"])
+
+    with tab1:
+        if not df.empty and "Total Work Time" in df.columns:
+            try:
+                # Convert work time to minutes for plotting
+                df['Work Minutes'] = df['Total Work Time'].apply(
+                    lambda x: int(x.split(':')[0]) * 60 + int(x.split(':')[1]) if x and ':' in x else 0
+                )
+                
+                bar_fig = px.bar(
+                    df,
+                    x="Employee Name",
+                    y="Work Minutes",
+                    title="Work Duration per Employee (Minutes)",
+                    color="Status",
+                    height=400,
+                )
+                bar_fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#333333' if not st.session_state.get("dark_mode", False) else '#f5f5f5')
+                )
+                st.plotly_chart(bar_fig, use_container_width=True)
+            except Exception as e:
+                st.error(f"Failed to create work duration chart: {str(e)}")
+
+    with tab2:
+        try:
+            status_counts = df["Status"].value_counts().reset_index()
+            if not status_counts.empty:
+                pie_fig = px.pie(
+                    status_counts,
+                    names="index",
+                    values="Status",
+                    title="Work Completion Status",
+                    height=400,
+                )
+                pie_fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#333333' if not st.session_state.get("dark_mode", False) else '#f5f5f5')
+                )
+                st.plotly_chart(pie_fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Failed to create status distribution chart: {str(e)}")
+
+def render_reporting_tools(sheet2):
+    """Render reporting tools section."""
+    st.subheader("📤 Reports")
+
+    email_col, btn_col = st.columns([3, 1])
+    with email_col:
+        email_to = st.text_input("Send report to email:", key="report_email")
+
+    with btn_col:
+        st.write("")
+        st.write("")
+        if st.button("✉️ Email Report", key="email_report_button"):
+            if not email_to or "@" not in email_to:
+                st.warning("Please enter a valid email address")
+            else:
+                with st.spinner("Generating and sending report..."):
+                    csv_file = export_to_csv(sheet2)
+                    if csv_file and send_email_with_csv(email_to, csv_file):
+                        st.success("Report emailed successfully!")
+                    else:
+                        st.error("Failed to send report")
+
+    if st.button("📥 Export as CSV", key="export_csv_button"):
+        with st.spinner("Exporting data..."):
+            csv_file = export_to_csv(sheet2)
+            if csv_file:
+                st.success(f"Exported: {csv_file}")
+                with open(csv_file, "rb") as f:
+                    st.download_button(
+                        label="Download CSV",
+                        data=f,
+                        file_name=csv_file,
+                        mime="text/csv",
+                        key="download_csv_button"
+                    )
+
+def export_to_csv(sheet):
+    """Export sheet data to CSV file."""
+    try:
+        data = sheet.get_all_values()
+        filename = f"Daily_Logs_{datetime.datetime.now().strftime('%Y-%m-%d')}.csv"
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerows(data)
+        return filename
+    except Exception as e:
+        st.error(f"Export failed: {str(e)}")
+        return None
+
+def send_email_with_csv(to_email, file_path):
+    """Send email with CSV attachment."""
+    try:
+        if not os.path.exists(file_path):
+            st.error("File not found for email attachment")
+            return False
+
+        msg = EmailMessage()
+        msg["Subject"] = f"Daily Employee Report - {datetime.datetime.now().strftime('%Y-%m-%d')}"
+        msg["From"] = config["EMAIL_ADDRESS"]
+        msg["To"] = to_email
+        msg.set_content("Attached is the daily employee report from PixsEdit Tracker.")
+
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+            msg.add_attachment(
+                file_data,
+                maintype="text",
+                subtype="csv",
+                filename=os.path.basename(file_path),
+            )
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(config["EMAIL_ADDRESS"], config["EMAIL_PASSWORD"])
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Email failed: {str(e)}")
+        return False
+
+# ====================
+# EMPLOYEE DASHBOARD
+# ====================
+def render_employee_dashboard():
+    """Render the employee dashboard."""
+    st.title(f"👋 Welcome, {st.session_state.user}")
+
+    _, sheet2 = connect_to_google_sheets()
+    if sheet2 is None:
+        return
+
+    try:
+        row = sheet2.row_values(st.session_state.row_index)
+    except Exception as e:
+        st.error(f"Error loading your data: {str(e)}")
+        row = []
+
+    render_employee_metrics(row)
+    render_time_tracking_controls(sheet2, row)
+
+def render_employee_metrics(row):
+    """Render employee metrics cards."""
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        login_time = row[1] if len(row) > 1 else "Not logged in"
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <h3>Login Time</h3>
+                <h2>{login_time}</h2>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col2:
+        break_duration = row[5] if len(row) > 5 else "00:00"
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <h3>Break Duration</h3>
+                <h2>{break_duration}</h2>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col3:
+        work_time = row[6] if len(row) > 6 else "00:00"
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <h3>Work Time</h3>
+                <h2>{work_time}</h2>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+def render_time_tracking_controls(sheet2, row):
+    """Render time tracking buttons with proper state management."""
+    st.subheader("⏱ Time Tracking")
+    action_col1, action_col2, action_col3 = st.columns(3)
+
+    with action_col1:
+        if st.button("☕ Start Break", key="start_break_button"):
+            if st.session_state.row_index is None:
+                st.error("No valid row index found")
+                return
+
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                # Show loading spinner
+                with st.spinner("Starting break..."):
+                    # Update the sheet
+                    sheet2.update_cell(st.session_state.row_index, 4, now)
+                    
+                    # Update session state
+                    st.session_state.break_started = True
+                    st.session_state.last_action = "break_start"
+                    
+                    # Small delay to ensure update completes
+                    time.sleep(1.5)
+                    
+                    # Show success message
+                    st.success(f"Break started at {now}")
+                    
+                    # Force a rerun to update the display
+                    st.rerun()
+                
+            except Exception as e:
+                st.error(f"Failed to start break: {str(e)}")
+                st.session_state.break_started = False
+
+    with action_col2:
+        if st.button("🔙 End Break", key="end_break_button"):
+            if len(row) <= 4 or not row[3]:
+                st.error("No break started")
+                return
+
+            try:
+                break_start = datetime.datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
+                break_end = datetime.datetime.now()
+                duration = (break_end - break_start).total_seconds() / 60
+                
+                # Show loading spinner
+                with st.spinner("Ending break..."):
+                    # Update both break end and duration
+                    sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
+                    sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
+                    
+                    # Update session state
+                    st.session_state.break_started = False
+                    st.session_state.break_ended = True
+                    st.session_state.last_action = "break_end"
+                    
+                    # Small delay before rerun
+                    time.sleep(1.5)
+                    
+                    # Show success message
+                    st.success(f"Break ended. Duration: {format_duration(duration)}")
+                    
+                    # Force rerun
+                    st.rerun()
+                
+            except Exception as e:
+                st.error(f"Error ending break: {str(e)}")
+                st.session_state.break_ended = False
+
+    with action_col3:
+        if st.button("🔒 Logout", key="logout_button_main"):
+            if len(row) <= 1 or not row[1]:
+                st.error("No login time recorded")
+                return
+
+            try:
+                login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+                logout_time = datetime.datetime.now()
+                
+                # Show loading spinner
+                with st.spinner("Processing logout..."):
+                    # Update logout time (column 3)
+                    sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
+
+                    # Calculate break duration
+                    break_mins = 0
+                    if len(row) > 5 and row[5]:
+                        try:
+                            h, m = map(int, row[5].split(":"))
+                            break_mins = h * 60 + m
+                        except:
+                            break_mins = 0
+
+                    # Calculate total work time
+                    total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
+                    total_str = format_duration(total_mins)
+                    
+                    # Update work time and status
+                    sheet2.update_cell(st.session_state.row_index, 7, total_str)
+                    status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
+                    sheet2.update_cell(st.session_state.row_index, 8, status)
+
+                    # Clear session state
+                    logout_user()
+                    
+                    # Show success message
+                    st.success(f"Logged out. Worked: {total_str}")
+                
+            except Exception as e:
+                st.error(f"Logout error: {str(e)}")
+
+    # Display status message based on last action
+    if st.session_state.get('last_action') == "break_start":
+        st.info("Break is currently active")
+    elif st.session_state.get('last_action') == "break_end":
+        st.info("Break completed")
+
+# ====================
+# LANDING PAGE
+# ====================
+def render_landing_page():
+    """Render the landing page for non-logged in users."""
+    st.title("🌟 PixsEdit Employee Tracker")
+    st.subheader("Luxury Interface ✨ with Live Dashboard")
+
+    st.markdown(
+        """
+        <div style="text-align: center; padding: 3rem 0;">
+            <h2>Welcome to the Employee Tracker</h2>
+            <p>Please login from the sidebar to access your dashboard</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ====================
 # MAIN APP EXECUTION
