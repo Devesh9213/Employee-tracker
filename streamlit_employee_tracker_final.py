@@ -241,6 +241,10 @@ def init_session_state():
         st.session_state.avatar_uploaded = False
     if "last_action" not in st.session_state:
         st.session_state.last_action = None
+    if "break_started" not in st.session_state:
+        st.session_state.break_started = False
+    if "break_ended" not in st.session_state:
+        st.session_state.break_ended = False
 
 # ====================
 # SIDEBAR COMPONENTS
@@ -282,6 +286,9 @@ def render_login_section():
         if st.button("🚪 Logout"):
             st.session_state.user = None
             st.session_state.row_index = None
+            st.session_state.break_started = False
+            st.session_state.break_ended = False
+            st.session_state.last_action = None
             st.rerun()
     else:
         st.markdown("### Login")
@@ -589,7 +596,7 @@ def render_employee_metrics(row):
         )
 
 def render_time_tracking_controls(sheet2, row):
-    """Render time tracking buttons."""
+    """Render time tracking buttons with proper state management."""
     st.subheader("⏱ Time Tracking")
     action_col1, action_col2, action_col3 = st.columns(3)
 
@@ -601,12 +608,27 @@ def render_time_tracking_controls(sheet2, row):
 
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             try:
-                sheet2.update_cell(st.session_state.row_index, 4, now)
-                st.success(f"Break started at {now}")
-                time.sleep(1)  # Small delay to prevent rate limiting
-                st.rerun()
+                # Show loading spinner
+                with st.spinner("Starting break..."):
+                    # Update the sheet
+                    sheet2.update_cell(st.session_state.row_index, 4, now)
+                    
+                    # Update session state
+                    st.session_state.break_started = True
+                    st.session_state.last_action = "break_start"
+                    
+                    # Small delay to ensure update completes
+                    time.sleep(1.5)
+                    
+                    # Show success message
+                    st.success(f"Break started at {now}")
+                    
+                    # Force a rerun to update the display
+                    st.experimental_rerun()
+                
             except Exception as e:
                 st.error(f"Failed to start break: {str(e)}")
+                st.session_state.break_started = False
 
     with action_col2:
         if st.button("🔙 End Break"):
@@ -619,14 +641,29 @@ def render_time_tracking_controls(sheet2, row):
                 break_end = datetime.datetime.now()
                 duration = (break_end - break_start).total_seconds() / 60
                 
-                sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
-                sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
+                # Show loading spinner
+                with st.spinner("Ending break..."):
+                    # Update both break end and duration
+                    sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
+                    sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
+                    
+                    # Update session state
+                    st.session_state.break_started = False
+                    st.session_state.break_ended = True
+                    st.session_state.last_action = "break_end"
+                    
+                    # Small delay before rerun
+                    time.sleep(1.5)
+                    
+                    # Show success message
+                    st.success(f"Break ended. Duration: {format_duration(duration)}")
+                    
+                    # Force rerun
+                    st.experimental_rerun()
                 
-                st.success(f"Break ended. Duration: {format_duration(duration)}")
-                time.sleep(1)
-                st.rerun()
             except Exception as e:
                 st.error(f"Error ending break: {str(e)}")
+                st.session_state.break_ended = False
 
     with action_col3:
         if st.button("🔒 Logout"):
@@ -638,34 +675,53 @@ def render_time_tracking_controls(sheet2, row):
                 login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
                 logout_time = datetime.datetime.now()
                 
-                # Update logout time (column 3)
-                sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
+                # Show loading spinner
+                with st.spinner("Processing logout..."):
+                    # Update logout time (column 3)
+                    sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
 
-                # Calculate break duration
-                break_mins = 0
-                if len(row) > 5 and row[5]:
-                    try:
-                        h, m = map(int, row[5].split(":"))
-                        break_mins = h * 60 + m
-                    except:
-                        break_mins = 0
+                    # Calculate break duration
+                    break_mins = 0
+                    if len(row) > 5 and row[5]:
+                        try:
+                            h, m = map(int, row[5].split(":"))
+                            break_mins = h * 60 + m
+                        except:
+                            break_mins = 0
 
-                # Calculate total work time
-                total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
-                total_str = format_duration(total_mins)
+                    # Calculate total work time
+                    total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
+                    total_str = format_duration(total_mins)
+                    
+                    # Update work time and status
+                    sheet2.update_cell(st.session_state.row_index, 7, total_str)
+                    status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
+                    sheet2.update_cell(st.session_state.row_index, 8, status)
+
+                    # Clear session state
+                    st.session_state.user = None
+                    st.session_state.row_index = None
+                    st.session_state.break_started = False
+                    st.session_state.break_ended = False
+                    st.session_state.last_action = None
+                    
+                    # Small delay
+                    time.sleep(1.5)
+                    
+                    # Show success message
+                    st.success(f"Logged out. Worked: {total_str}")
+                    
+                    # Force rerun
+                    st.experimental_rerun()
                 
-                # Update work time (column 7) and status (column 8)
-                sheet2.update_cell(st.session_state.row_index, 7, total_str)
-                status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
-                sheet2.update_cell(st.session_state.row_index, 8, status)
-
-                st.success(f"Logged out. Worked: {total_str}")
-                st.session_state.user = None
-                st.session_state.row_index = None
-                time.sleep(1)
-                st.rerun()
             except Exception as e:
                 st.error(f"Logout error: {str(e)}")
+
+    # Display status message based on last action
+    if st.session_state.get('last_action') == "break_start":
+        st.info("Break is currently active")
+    elif st.session_state.get('last_action') == "break_end":
+        st.info("Break completed")
 
 def render_landing_page():
     """Render the landing page for non-logged in users."""
