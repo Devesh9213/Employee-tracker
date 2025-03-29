@@ -11,8 +11,8 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import time
-from streamlit.components.v1 import html
-
+from streamlit.components.v1 import HTML
+from streamlit_autorefresh import st_autorefresh 
 
 # ====================
 # CONFIGURATION
