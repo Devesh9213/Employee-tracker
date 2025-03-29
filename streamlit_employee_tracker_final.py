@@ -331,7 +331,7 @@ def check_persistent_session():
     }
     </script>
     """
-html(js_code, height=0)
+html(js_code,height=0)
 
 # ====================
 # SIDEBAR COMPONENTS
