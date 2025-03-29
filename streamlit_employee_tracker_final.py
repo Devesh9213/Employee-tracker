@@ -27,7 +27,7 @@ st.set_page_config(
 )
 
 # ====================
-# CONFIGURATION
+# REST OF THE APPLICATION CODE
 # ====================
 def load_config():
     """Load configuration from secrets and environment."""
@@ -53,6 +53,8 @@ def load_config():
 config = load_config()
 AVATAR_DIR = config["AVATAR_DIR"]
 AVATAR_DIR.mkdir(exist_ok=True)
+
+# [Rest of your functions and code...]
 
 # ====================
 # PERSISTENT SESSION MANAGEMENT
@@ -889,7 +891,6 @@ def main():
         
         # Check for persistent session from browser storage
         if not st.session_state.user and st.session_state.persistent_login:
-            # This would be set from the JavaScript message handler
             if st.session_state.get('username_from_storage'):
                 st.session_state.user = st.session_state.username_from_storage
                 st.rerun()
@@ -906,4 +907,4 @@ def main():
         st.error(f"Application error: {str(e)}")
 
 if __name__ == "__main__":
-    main
+    main()
