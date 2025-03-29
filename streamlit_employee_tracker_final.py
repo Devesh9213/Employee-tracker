@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import time
-from streamlit.components.v1 import html
+from streamlit.components.v1 import HTML
 
 # ====================
 # CONFIGURATION
@@ -24,7 +24,6 @@ def load_config():
         creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
         client = gspread.authorize(creds)
-
         return {
             "SPREADSHEET_ID": st.secrets["SPREADSHEET_ID"],
             "EMAIL_ADDRESS": st.secrets["EMAIL_ADDRESS"],
