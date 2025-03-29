@@ -13,35 +13,6 @@ import plotly.express as px
 import time
 from streamlit.components.v1 import html
 from streamlit_autorefresh import st_autorefresh 
-
-# ====================
-# CONFIGURATION
-# ====================
-def load_config():
-    """Load configuration from secrets and environment."""
-    try:
-        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
-                 "https://www.googleapis.com/auth/drive"]
-        creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
-        client = gspread.authorize(creds)
-
-        return {
-            "SPREADSHEET_ID": st.secrets["SPREADSHEET_ID"],
-            "EMAIL_ADDRESS": st.secrets["EMAIL_ADDRESS"],
-            "EMAIL_PASSWORD": st.secrets["EMAIL_PASSWORD"],
-            "client": client,
-            "AVATAR_DIR": Path("avatars"),
-        }
-    except Exception as e:
-        st.error(f"Configuration error: {str(e)}")
-        st.stop()
-        return None
-
-config = load_config()
-AVATAR_DIR = config["AVATAR_DIR"]
-AVATAR_DIR.mkdir(exist_ok=True)
-
 # ====================
 # PAGE SETUP
 # ====================
@@ -262,6 +233,35 @@ def apply_cream_theme():
         }
     </style>
     """, unsafe_allow_html=True)
+
+# ====================
+# CONFIGURATION
+# ====================
+def load_config():
+    """Load configuration from secrets and environment."""
+    try:
+        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
+                 "https://www.googleapis.com/auth/drive"]
+        creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
+        client = gspread.authorize(creds)
+
+        return {
+            "SPREADSHEET_ID": st.secrets["SPREADSHEET_ID"],
+            "EMAIL_ADDRESS": st.secrets["EMAIL_ADDRESS"],
+            "EMAIL_PASSWORD": st.secrets["EMAIL_PASSWORD"],
+            "client": client,
+            "AVATAR_DIR": Path("avatars"),
+        }
+    except Exception as e:
+        st.error(f"Configuration error: {str(e)}")
+        st.stop()
+        return None
+
+config = load_config()
+AVATAR_DIR = config["AVATAR_DIR"]
+AVATAR_DIR.mkdir(exist_ok=True)
+
 
 # ====================
 # UTILITY FUNCTIONS
