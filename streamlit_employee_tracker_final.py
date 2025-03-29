@@ -1062,14 +1062,61 @@ def render_landing_page():
 # MAIN APP EXECUTION
 # ====================
 def main():
-    """Main application entry point."""
     try:
-        setup_page()
         init_session_state()
-        render_sidebar()
-        render_main_content()
+        check_persistent_session()
+
+        # Auto-refresh every 60 seconds
+        st_autorefresh(interval=60000)
+
+        if st.session_state.user:
+            st.write(f"Welcome back, {st.session_state.user}!")
+            if st.button("Logout"):
+                st.session_state.user = None
+                st.session_state.row_index = None
+                st.session_state.persistent_login = False
+                persist_session()
+                st.experimental_rerun()
+        else:
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            keep_logged_in = st.checkbox("Keep me logged in")
+
+            if st.button("Login"):
+                if username == "admin" and password == "admin":
+                    st.session_state.user = username
+                    st.session_state.persistent_login = keep_logged_in
+                    persist_session()
+                    st.experimental_rerun()
+                else:
+                    st.error("Invalid credentials")
     except Exception as e:
-        st.error(f"Application error: {str(e)}")
+        st.error(f"App error: {e}")
+
+# ====================
+# Helper for live status styling
+# ====================
+def determine_current_status(row):
+    now = datetime.datetime.now()
+    if row["Logout Time"]:
+        return "🔴 Logged Out"
+    elif row["Break Start"] and not row["Break End"]:
+        return "☕ On Break"
+    else:
+        return "🟢 Working"
+
+def highlight_row(row):
+    if row["Current Status"] == "☕ On Break":
+        return ['background-color: #e6ffe6'] * len(row)
+    elif row["Break Duration"]:
+        try:
+            h, m = map(int, row["Break Duration"].split(":"))
+            total = h * 60 + m
+            if total > 50:
+                return ['background-color: #ffe6e6'] * len(row)
+        except:
+            pass
+    return [''] * len(row)
 
 if __name__ == "__main__":
     main()
