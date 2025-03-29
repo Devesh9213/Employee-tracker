@@ -1059,6 +1059,30 @@ def render_landing_page():
     """, unsafe_allow_html=True)
 
 # ====================
+# Helper for live status styling
+# ====================
+def determine_current_status(row):
+    now = datetime.datetime.now()
+    if row["Logout Time"]:
+        return "🔴 Logged Out"
+    elif row["Break Start"] and not row["Break End"]:
+        return "☕ On Break"
+    else:
+        return "🟢 Working"
+
+def highlight_row(row):
+    if row["Current Status"] == "☕ On Break":
+        return ['background-color: #e6ffe6'] * len(row)
+    elif row["Break Duration"]:
+        try:
+            h, m = map(int, row["Break Duration"].split(":"))
+            total = h * 60 + m
+            if total > 50:
+                return ['background-color: #ffe6e6'] * len(row)
+        except:
+            pass
+    return [''] * len(row)
+# ====================
 # MAIN APP EXECUTION
 # ====================
 def main():
@@ -1092,31 +1116,6 @@ def main():
                     st.error("Invalid credentials")
     except Exception as e:
         st.error(f"App error: {e}")
-
-# ====================
-# Helper for live status styling
-# ====================
-def determine_current_status(row):
-    now = datetime.datetime.now()
-    if row["Logout Time"]:
-        return "🔴 Logged Out"
-    elif row["Break Start"] and not row["Break End"]:
-        return "☕ On Break"
-    else:
-        return "🟢 Working"
-
-def highlight_row(row):
-    if row["Current Status"] == "☕ On Break":
-        return ['background-color: #e6ffe6'] * len(row)
-    elif row["Break Duration"]:
-        try:
-            h, m = map(int, row["Break Duration"].split(":"))
-            total = h * 60 + m
-            if total > 50:
-                return ['background-color: #ffe6e6'] * len(row)
-        except:
-            pass
-    return [''] * len(row)
 
 if __name__ == "__main__":
     main()
