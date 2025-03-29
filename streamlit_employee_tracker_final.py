@@ -46,64 +46,217 @@ AVATAR_DIR.mkdir(exist_ok=True)
 def setup_page():
     """Configure page settings and theme."""
     st.set_page_config(
-        page_title=" PixsEdit Employee Tracker",
+        page_title="PixsEdit Employee Tracker",
         layout="wide",
-        )
-    current_hour = datetime.datetime.now().hour
-    auto_dark = current_hour < 6 or current_hour >= 18
-    dark_mode = st.sidebar.toggle(" Dark Mode", value=auto_dark)
+        page_icon="🕒",
+        initial_sidebar_state="expanded"
+    )
+    apply_cream_theme()
 
-    if dark_mode:
-        apply_dark_theme()
-    else:
-        apply_light_theme()
-
-def apply_dark_theme():
-    """Apply dark theme styling."""
+def apply_cream_theme():
+    """Apply elegant cream white theme with soft accents."""
     st.markdown("""
     <style>
-.main {
-    background-color: #121212;
-    color: #e0e0e0;
-}
-
-.stButton>button {
-    background-color: #1f1f1f !important;
-    color: #e0e0e0 !important;
-    border: 1px solid #333 !important;
-}
-
-.metric-card {
-    background-color: #1e1e1e;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
-    border-left: 4px solid #00bcd4; /* cyan accent */
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-}
-
-    </style>
-    """, unsafe_allow_html=True)
-
-def apply_light_theme():
-    """Apply light theme styling."""
-    st.markdown("""
-    <style>
+        :root {
+            --primary: #f5f5f0;
+            --secondary: #e8e8e3;
+            --accent: #8b8b83;
+            --text: #333333;
+            --highlight: #d4af37;
+            --success: #5cb85c;
+            --warning: #f0ad4e;
+            --danger: #d9534f;
+        }
+        
         .main {
-            background-color: #f6f9fc;
+            background-color: var(--primary);
+            color: var(--text);
         }
+        
+        .sidebar .sidebar-content {
+            background-color: var(--secondary) !important;
+            background-image: linear-gradient(to bottom, #f8f8f3, #e8e8e3);
+        }
+        
         .stButton>button {
-            background: linear-gradient(90deg, #007cf0, #00dfd8) !important;
-            color: white !important;
-            border: none !important;
+            background-color: var(--secondary) !important;
+            color: var(--text) !important;
+            border: 1px solid var(--accent) !important;
+            border-radius: 8px !important;
+            transition: all 0.3s ease;
+            padding: 0.5rem 1rem;
+            font-weight: 500;
         }
+        
+        .stButton>button:hover {
+            background-color: var(--accent) !important;
+            color: white !important;
+            border-color: var(--accent) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
         .metric-card {
             background-color: white;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            border-radius: 12px;
             margin-bottom: 1rem;
-            border-left: 4px solid #4a90e2;
+            border-left: 4px solid var(--highlight);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .metric-card h3 {
+            color: var(--accent);
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-card h1, .metric-card h2 {
+            color: var(--text);
+            margin-top: 0;
+        }
+        
+        .stTextInput>div>div>input,
+        .stTextArea>div>div>textarea {
+            background-color: white !important;
+            border: 1px solid var(--accent) !important;
+            border-radius: 8px !important;
+        }
+        
+        .stDataFrame {
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        
+        .stAlert {
+            border-radius: 8px;
+        }
+        
+        .stProgress>div>div>div {
+            background-color: var(--highlight) !important;
+        }
+        
+        .st-bb {
+            background-color: var(--primary);
+        }
+        
+        .st-at {
+            background-color: var(--highlight);
+        }
+        
+        .st-ax {
+            color: var(--text);
+        }
+        
+        hr {
+            border-color: var(--accent);
+            opacity: 0.2;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--secondary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent);
+            border-radius: 4px;
+        }
+        
+        /* Custom tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 10px;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            background: var(--secondary) !important;
+            border-radius: 8px 8px 0 0 !important;
+            padding: 0.5rem 1rem !important;
+            transition: all 0.3s ease;
+        }
+        
+        .stTabs [aria-selected="true"] {
+            background: white !important;
+            color: var(--highlight) !important;
+            font-weight: 600;
+        }
+        
+        /* Custom success/warning/error messages */
+        .stAlert [data-testid="stMarkdownContainer"] {
+            color: var(--text);
+        }
+        
+        .stSuccess {
+            background-color: rgba(92, 184, 92, 0.1) !important;
+            border-left: 4px solid var(--success) !important;
+        }
+        
+        .stWarning {
+            background-color: rgba(240, 173, 78, 0.1) !important;
+            border-left: 4px solid var(--warning) !important;
+        }
+        
+        .stError {
+            background-color: rgba(217, 83, 79, 0.1) !important;
+            border-left: 4px solid var(--danger) !important;
+        }
+        
+        /* Custom avatar styling */
+        .avatar-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .avatar-image {
+            border-radius: 50%;
+            border: 3px solid var(--highlight);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .avatar-image:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+        }
+        
+        /* Landing page styling */
+        .landing-header {
+            text-align: center;
+            padding: 3rem 0;
+            background: linear-gradient(to right, #f8f8f3, #ffffff);
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        
+        .landing-header h1 {
+            color: var(--highlight);
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .landing-header p {
+            color: var(--accent);
+            font-size: 1.2rem;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        
+        /* Button icons */
+        .button-icon {
+            margin-right: 8px;
+            vertical-align: middle;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -255,9 +408,13 @@ def init_session_state():
 def render_sidebar():
     """Render the sidebar components."""
     with st.sidebar:
-        st.title("PixsEdit Tracker")
-        st.caption("🌓 Auto theme applied based on time of day")
-
+        st.markdown("""
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h1 style="color: #8b8b83; font-size: 1.8rem;">PixsEdit Tracker</h1>
+            <p style="color: #a0a099; font-size: 0.9rem;">Elegant Time Management</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
         render_avatar_section()
         render_login_section()
 
@@ -266,48 +423,67 @@ def render_avatar_section():
     if st.session_state.user:
         avatar_path = AVATAR_DIR / f"{st.session_state.user}.png"
         if avatar_path.exists():
-            st.image(str(avatar_path), width=100, caption=f"Welcome {st.session_state.user}")
+            st.markdown("""
+            <div class="avatar-container">
+                <img src="" class="avatar-image" width="120" height="120" alt="User Avatar">
+            </div>
+            """.replace('src=""', f'src="data:image/png;base64,{image_to_base64(avatar_path)}"'), unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center; font-weight: 500; color: #333333;'>{st.session_state.user}</p>", unsafe_allow_html=True)
 
-        new_avatar = st.file_uploader("Update Avatar", type=["jpg", "jpeg", "png"])
+        new_avatar = st.file_uploader("🖼️ Update Avatar", type=["jpg", "jpeg", "png"])
         if new_avatar:
             with open(avatar_path, "wb") as f:
                 f.write(new_avatar.read())
-            st.success("Avatar updated!")
+            st.success("Avatar updated successfully!")
             st.session_state.avatar_uploaded = True
+            time.sleep(1)
+            st.rerun()
     else:
-        uploaded_avatar = st.file_uploader("Upload Avatar (optional)", type=["jpg", "jpeg", "png"])
+        uploaded_avatar = st.file_uploader("🖼️ Upload Avatar (optional)", type=["jpg", "jpeg", "png"])
         if uploaded_avatar:
             temp_path = AVATAR_DIR / "temp_avatar.png"
             with open(temp_path, "wb") as f:
                 f.write(uploaded_avatar.read())
-            st.image(str(temp_path), width=100, caption="Preview")
+            st.markdown("""
+            <div class="avatar-container">
+                <img src="" class="avatar-image" width="100" height="100" alt="Preview Avatar">
+            </div>
+            """.replace('src=""', f'src="data:image/png;base64,{image_to_base64(temp_path)}"'), unsafe_allow_html=True)
+
+def image_to_base64(image_path):
+    """Convert image to base64 for HTML display."""
+    import base64
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode('utf-8')
 
 def render_login_section():
     """Handle login/logout functionality."""
     st.markdown("---")
     if st.session_state.user:
-        if st.button("🚪 Logout"):
+        if st.button("🚪 Logout", use_container_width=True):
             st.session_state.user = None
             st.session_state.row_index = None
             st.session_state.break_started = False
             st.session_state.break_ended = False
             st.session_state.last_action = None
+            st.success("Logged out successfully!")
+            time.sleep(1)
             st.rerun()
     else:
-        st.markdown("### Login")
-        username = st.text_input("👤 Username")
-        password = st.text_input("🔒 Password", type="password")
+        st.markdown("### 🔐 Authentication")
+        username = st.text_input("👤 Username", placeholder="Enter your username")
+        password = st.text_input("🔒 Password", type="password", placeholder="Enter your password")
 
         col1, col2 = st.columns(2)
-        if col1.button("Login"):
+        if col1.button("Login", use_container_width=True):
             handle_login(username, password)
-        if col2.button("Register"):
+        if col2.button("Register", use_container_width=True):
             handle_registration(username, password)
 
 def handle_login(username, password):
     """Process login attempt."""
     if not username or not password:
-        st.error("Username and password are required")
+        st.error("Please enter both username and password")
         return
 
     sheet1, _ = connect_to_google_sheets()
@@ -318,7 +494,7 @@ def handle_login(username, password):
     user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
 
     if username not in user_dict or user_dict[username] != password:
-        st.error("Invalid credentials.")
+        st.error("Invalid credentials. Please try again.")
     else:
         st.session_state.user = username
         _, sheet2 = connect_to_google_sheets()
@@ -339,12 +515,14 @@ def handle_login(username, password):
             sheet2.append_row([username, now, "", "", "", "", "", ""])
             st.session_state.row_index = len(sheet2.get_all_values())
 
+        st.success(f"Welcome back, {username}!")
+        time.sleep(1)
         st.rerun()
 
 def handle_registration(username, password):
     """Process new user registration."""
     if not username or not password:
-        st.error("Username and password are required")
+        st.error("Please enter both username and password")
         return
 
     sheet1, _ = connect_to_google_sheets()
@@ -355,18 +533,18 @@ def handle_registration(username, password):
     user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
 
     if username in user_dict:
-        st.error("User already exists.")
+        st.error("Username already exists. Please choose another.")
     else:
         sheet1.append_row([username, password])
-        st.success("Registration successful! Please login.")
+        st.success("Registration successful! You can now login.")
+        time.sleep(1.5)
+        st.rerun()
 
 # ====================
 # MAIN CONTENT AREAS
 # ====================
 def render_main_content():
     """Render the appropriate content based on user state."""
-    st.markdown("<div class='main'>", unsafe_allow_html=True)
-
     if st.session_state.user == "admin":
         render_admin_dashboard()
     elif st.session_state.user:
@@ -374,11 +552,9 @@ def render_main_content():
     else:
         render_landing_page()
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
 def render_admin_dashboard():
     """Render the admin dashboard."""
-    st.title("Admin Dashboard")
+    st.title("📊 Admin Dashboard")
     sheet1, sheet2 = connect_to_google_sheets()
     if sheet2 is None:
         return
@@ -457,9 +633,14 @@ def render_employee_directory(df):
     """Render employee directory table."""
     st.subheader("👥 Employee Directory")
     if not df.empty:
-        st.dataframe(df, use_container_width=True)
+        # Format the DataFrame for better display
+        display_df = df.copy()
+        if 'Status' in display_df.columns:
+            display_df['Status'] = display_df['Status'].apply(lambda x: f"<span style='color: {'#5cb85c' if 'Complete' in str(x) else '#d9534f'}'>{x}</span>")
+        
+        st.dataframe(display_df, use_container_width=True, height=400)
     else:
-        st.warning("No employee data available")
+        st.warning("No employee data available for today")
 
 def render_admin_analytics(df):
     """Render admin analytics charts."""
@@ -469,7 +650,7 @@ def render_admin_analytics(df):
         st.warning("No data available for analytics")
         return
 
-    tab1, tab2 = st.tabs(["Work Duration", "Status Distribution"])
+    tab1, tab2 = st.tabs(["Work Duration Analysis", "Status Distribution"])
 
     with tab1:
         if not df.empty and "Total Work Time" in df.columns:
@@ -485,7 +666,20 @@ def render_admin_analytics(df):
                     y="Work Minutes",
                     title="Work Duration per Employee (Minutes)",
                     color="Status",
+                    color_discrete_map={
+                        "✅ Complete": "#5cb85c",
+                        "❌ Incomplete": "#f0ad4e",
+                        "❌ Over Break": "#d9534f"
+                    },
                     height=400,
+                    template="plotly_white"
+                )
+                bar_fig.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    xaxis_title="Employee",
+                    yaxis_title="Work Duration (minutes)",
+                    hovermode="x unified"
                 )
                 st.plotly_chart(bar_fig, use_container_width=True)
             except Exception as e:
@@ -501,6 +695,23 @@ def render_admin_analytics(df):
                     values="Status",
                     title="Work Completion Status",
                     height=400,
+                    color="index",
+                    color_discrete_map={
+                        "✅ Complete": "#5cb85c",
+                        "❌ Incomplete": "#f0ad4e",
+                        "❌ Over Break": "#d9534f"
+                    },
+                    template="plotly_white"
+                )
+                pie_fig.update_traces(
+                    textposition='inside',
+                    textinfo='percent+label',
+                    marker=dict(line=dict(color='#ffffff', width=1))
+                )
+                pie_fig.update_layout(
+                    uniformtext_minsize=12,
+                    uniformtext_mode='hide',
+                    showlegend=False
                 )
                 st.plotly_chart(pie_fig, use_container_width=True)
         except Exception as e:
@@ -508,42 +719,45 @@ def render_admin_analytics(df):
 
 def render_reporting_tools(sheet2):
     """Render reporting tools section."""
-    st.subheader("📤 Reports")
+    st.subheader("📤 Reporting Tools")
 
-    email_col, btn_col = st.columns([3, 1])
-    with email_col:
-        email_to = st.text_input("Send report to email:", key="report_email")
+    with st.expander("Export Options", expanded=True):
+        email_col, btn_col = st.columns([3, 1])
+        with email_col:
+            email_to = st.text_input("Email address to send report:", placeholder="manager@company.com", key="report_email")
 
-    with btn_col:
-        st.write("")
-        st.write("")
-        if st.button("✉️ Email Report"):
-            if not email_to or "@" not in email_to:
-                st.warning("Please enter a valid email address")
-            else:
-                with st.spinner("Generating and sending report..."):
-                    csv_file = export_to_csv(sheet2)
-                    if csv_file and send_email_with_csv(email_to, csv_file):
-                        st.success("Report emailed successfully!")
-                    else:
-                        st.error("Failed to send report")
+        with btn_col:
+            st.write("")
+            st.write("")
+            if st.button("✉️ Email Report", use_container_width=True):
+                if not email_to or "@" not in email_to:
+                    st.warning("Please enter a valid email address")
+                else:
+                    with st.spinner("Generating and sending report..."):
+                        csv_file = export_to_csv(sheet2)
+                        if csv_file and send_email_with_csv(email_to, csv_file):
+                            st.success("Report emailed successfully!")
+                        else:
+                            st.error("Failed to send report")
 
-    if st.button("📥 Export as CSV"):
-        with st.spinner("Exporting data..."):
-            csv_file = export_to_csv(sheet2)
-            if csv_file:
-                st.success(f"Exported: {csv_file}")
-                with open(csv_file, "rb") as f:
-                    st.download_button(
-                        label="Download CSV",
-                        data=f,
-                        file_name=csv_file,
-                        mime="text/csv",
-                    )
+        if st.button("📥 Export as CSV", use_container_width=True):
+            with st.spinner("Exporting data..."):
+                csv_file = export_to_csv(sheet2)
+                if csv_file:
+                    st.success(f"Exported: {csv_file}")
+                    with open(csv_file, "rb") as f:
+                        st.download_button(
+                            label="Download CSV",
+                            data=f,
+                            file_name=csv_file,
+                            mime="text/csv",
+                            use_container_width=True
+                        )
 
 def render_employee_dashboard():
     """Render the employee dashboard."""
     st.title(f"👋 Welcome, {st.session_state.user}")
+    st.markdown("---")
 
     _, sheet2 = connect_to_google_sheets()
     if sheet2 is None:
@@ -601,40 +815,38 @@ def render_employee_metrics(row):
 def render_time_tracking_controls(sheet2, row):
     """Render time tracking buttons with proper state management."""
     st.subheader("⏱ Time Tracking")
+    
+    # Status indicator
+    if st.session_state.get('last_action') == "break_start":
+        st.info("🟡 Break is currently active")
+    elif st.session_state.get('last_action') == "break_end":
+        st.success("🟢 Break completed")
+    else:
+        st.info("🔵 Ready to track your time")
+
     action_col1, action_col2, action_col3 = st.columns(3)
 
     with action_col1:
-        if st.button("☕ Start Break"):
+        if st.button("☕ Start Break", use_container_width=True):
             if st.session_state.row_index is None:
                 st.error("No valid row index found")
                 return
 
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             try:
-                # Show loading spinner
                 with st.spinner("Starting break..."):
-                    # Update the sheet
                     sheet2.update_cell(st.session_state.row_index, 4, now)
-                    
-                    # Update session state
                     st.session_state.break_started = True
                     st.session_state.last_action = "break_start"
-                    
-                    # Small delay to ensure update completes
                     time.sleep(1.5)
-                    
-                    # Show success message
                     st.success(f"Break started at {now}")
-                    
-                    # Force a rerun to update the display
-                    st.experimental_rerun()
-                
+                    st.rerun()
             except Exception as e:
                 st.error(f"Failed to start break: {str(e)}")
                 st.session_state.break_started = False
 
     with action_col2:
-        if st.button("🔙 End Break"):
+        if st.button("🔙 End Break", use_container_width=True):
             if len(row) <= 4 or not row[3]:
                 st.error("No break started")
                 return
@@ -644,32 +856,21 @@ def render_time_tracking_controls(sheet2, row):
                 break_end = datetime.datetime.now()
                 duration = (break_end - break_start).total_seconds() / 60
                 
-                # Show loading spinner
                 with st.spinner("Ending break..."):
-                    # Update both break end and duration
                     sheet2.update_cell(st.session_state.row_index, 5, break_end.strftime("%Y-%m-%d %H:%M:%S"))
                     sheet2.update_cell(st.session_state.row_index, 6, format_duration(duration))
-                    
-                    # Update session state
                     st.session_state.break_started = False
                     st.session_state.break_ended = True
                     st.session_state.last_action = "break_end"
-                    
-                    # Small delay before rerun
                     time.sleep(1.5)
-                    
-                    # Show success message
                     st.success(f"Break ended. Duration: {format_duration(duration)}")
-                    
-                    # Force rerun
-                    st.experimental_rerun()
-                
+                    st.rerun()
             except Exception as e:
                 st.error(f"Error ending break: {str(e)}")
                 st.session_state.break_ended = False
 
     with action_col3:
-        if st.button("🔒 Logout"):
+        if st.button("🔒 Logout", use_container_width=True):
             if len(row) <= 1 or not row[1]:
                 st.error("No login time recorded")
                 return
@@ -678,12 +879,9 @@ def render_time_tracking_controls(sheet2, row):
                 login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
                 logout_time = datetime.datetime.now()
                 
-                # Show loading spinner
                 with st.spinner("Processing logout..."):
-                    # Update logout time (column 3)
                     sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
 
-                    # Calculate break duration
                     break_mins = 0
                     if len(row) > 5 and row[5]:
                         try:
@@ -692,54 +890,67 @@ def render_time_tracking_controls(sheet2, row):
                         except:
                             break_mins = 0
 
-                    # Calculate total work time
                     total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
                     total_str = format_duration(total_mins)
                     
-                    # Update work time and status
                     sheet2.update_cell(st.session_state.row_index, 7, total_str)
                     status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
                     sheet2.update_cell(st.session_state.row_index, 8, status)
 
-                    # Clear session state
                     st.session_state.user = None
                     st.session_state.row_index = None
                     st.session_state.break_started = False
                     st.session_state.break_ended = False
                     st.session_state.last_action = None
                     
-                    # Small delay
                     time.sleep(1.5)
-                    
-                    # Show success message
-                    st.success(f"Logged out. Worked: {total_str}")
-                    
-                    # Force rerun
-                    st.experimental_rerun()
-                
+                    st.success(f"Logged out successfully. Worked: {total_str}")
+                    time.sleep(1.5)
+                    st.rerun()
             except Exception as e:
                 st.error(f"Logout error: {str(e)}")
 
-    # Display status message based on last action
-    if st.session_state.get('last_action') == "break_start":
-        st.info("Break is currently active")
-    elif st.session_state.get('last_action') == "break_end":
-        st.info("Break completed")
-
 def render_landing_page():
     """Render the landing page for non-logged in users."""
-    st.title("🌟 PixsEdit Employee Tracker")
-    st.subheader("Luxury Interface ✨ with Live Dashboard")
+    st.markdown("""
+    <div class="landing-header">
+        <h1>🌟 PixsEdit Employee Tracker</h1>
+        <p>An elegant solution for tracking work hours, breaks, and productivity with beautiful visualizations</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown(
-        """
-        <div style="text-align: center; padding: 3rem 0;">
-            <h2>Welcome to the Employee Tracker</h2>
-            <p>Please login from the sidebar to access your dashboard</p>
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div style="background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); height: 100%;">
+            <h3 style="color: #8b8b83;">⏱️ Time Tracking</h3>
+            <p style="color: #666;">Easily track your work hours, breaks, and productivity with simple controls.</p>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style="background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); height: 100%;">
+            <h3 style="color: #8b8b83;">📊 Analytics</h3>
+            <p style="color: #666;">Beautiful visualizations help you understand work patterns and productivity.</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div style="background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); height: 100%;">
+            <h3 style="color: #8b8b83;">🔒 Secure</h3>
+            <p style="color: #666;">Your data is securely stored and only accessible to authorized users.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; margin-top: 2rem;">
+        <p style="color: #8b8b83;">Please login from the sidebar to access your dashboard</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ====================
 # MAIN APP EXECUTION
