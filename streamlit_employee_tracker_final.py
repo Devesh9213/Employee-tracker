@@ -14,6 +14,16 @@ import time
 from streamlit.components.v1 import html
 
 # ====================
+# PAGE CONFIGURATION (MUST BE FIRST)
+# ====================
+st.set_page_config(
+    page_title="🌟 PixsEdit Employee Tracker",
+    layout="wide",
+    page_icon="🕒",
+    initial_sidebar_state="expanded"
+)
+
+# ====================
 # CONFIGURATION
 # ====================
 def load_config():
@@ -41,6 +51,7 @@ config = load_config()
 AVATAR_DIR = config["AVATAR_DIR"]
 AVATAR_DIR.mkdir(exist_ok=True)
 
+[... rest of your code remains exactly the same ...]
 # ====================
 # PERSISTENT SESSION MANAGEMENT
 # ====================
