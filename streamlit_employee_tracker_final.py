@@ -1,6 +1,3 @@
-# ====================
-# IMPORTS (MUST COME BEFORE STREAMLIT COMMANDS)
-# ====================
 import os
 import datetime
 import csv
@@ -17,17 +14,7 @@ import time
 from streamlit.components.v1 import html
 
 # ====================
-# PAGE CONFIGURATION (FIRST STREAMLIT COMMAND)
-# ====================
-st.set_page_config(
-    page_title="🌟 PixsEdit Employee Tracker",
-    layout="wide",
-    page_icon="🕒",
-    initial_sidebar_state="expanded"
-)
-
-# ====================
-# REST OF THE APPLICATION CODE
+# CONFIGURATION
 # ====================
 def load_config():
     """Load configuration from secrets and environment."""
@@ -54,149 +41,124 @@ config = load_config()
 AVATAR_DIR = config["AVATAR_DIR"]
 AVATAR_DIR.mkdir(exist_ok=True)
 
-# [Rest of your functions and code...]
-
 # ====================
-# PERSISTENT SESSION MANAGEMENT
+# PAGE SETUP
 # ====================
-def setup_persistent_session():
-    """Initialize and maintain persistent session using browser localStorage."""
-    js = """
-    <script>
-    // Store session state in localStorage
-    function storeState(key, value) {
-        localStorage.setItem(key, value);
-    }
+def setup_page():
+    """Configure page settings and theme."""
+    st.set_page_config(
+        page_title="🌟 PixsEdit Employee Tracker",
+        layout="wide",
+        page_icon="🕒",
+        initial_sidebar_state="expanded"
+    )
     
-    // Retrieve session state from localStorage
-    function getState(key) {
-        return localStorage.getItem(key);
-    }
-    
-    // Check for existing session on page load
-    function checkSession() {
-        const username = getState('username');
-        const persistent = getState('persistent_login') === 'true';
-        
-        if (username && persistent) {
-            window.parent.postMessage({
-                type: 'STREAMLIT_PERSISTENT_SESSION',
-                username: username
-            }, '*');
+    # Inject custom CSS to prevent auto-hiding of sidebar
+    st.markdown("""
+    <style>
+        [data-testid="stSidebar"][aria-expanded="true"]{
+            min-width: 300px;
+            max-width: 300px;
         }
-    }
+    </style>
+    """, unsafe_allow_html=True)
     
-    // Run check on page load
-    checkSession();
-    
-    // Listen for Streamlit messages to update localStorage
-    window.addEventListener('message', function(event) {
-        if (event.data.type === 'STREAMLIT_UPDATE_SESSION') {
-            storeState('username', event.data.username || '');
-            storeState('persistent_login', event.data.persistent);
-        }
-    });
-    </script>
-    """
-    html(js, height=0, width=0)
-
-def update_persistent_session(username, persistent):
-    """Update the browser's localStorage with current session info."""
-    js = f"""
-    <script>
-    window.parent.postMessage({{
-        type: 'STREAMLIT_UPDATE_SESSION',
-        username: '{username}',
-        persistent: {str(persistent).lower()}
-    }}, '*');
-    </script>
-    """
-    html(js, height=0, width=0)
-
-# ====================
-# THEME MANAGEMENT
-# ====================
-def apply_theme():
-    """Apply theme styling based on time of day or user preference."""
     current_hour = datetime.datetime.now().hour
     auto_dark = current_hour < 6 or current_hour >= 18
-    dark_mode = st.session_state.get('dark_mode', auto_dark)
-    
+    dark_mode = st.sidebar.toggle("🌙 Dark Mode", value=auto_dark, key="dark_mode_toggle")
+
     if dark_mode:
-        st.markdown("""
-        <style>
-            :root {
-                --primary-color: #4a90e2;
-                --background-color: #1e1e1e;
-                --secondary-background-color: #2d2d2d;
-                --text-color: #f5f5f5;
-                --border-color: #6a6a6a;
-            }
-            
-            .main {
-                background-color: var(--background-color);
-                color: var(--text-color);
-            }
-            
-            .stButton>button {
-                background-color: var(--secondary-background-color) !important;
-                color: var(--text-color) !important;
-                border: 1px solid var(--border-color) !important;
-                transition: all 0.3s ease;
-            }
-            
-            .stButton>button:hover {
-                background-color: var(--primary-color) !important;
-                transform: translateY(-2px);
-            }
-            
-            .metric-card {
-                background-color: var(--secondary-background-color);
-                padding: 1rem;
-                border-radius: 0.5rem;
-                margin-bottom: 1rem;
-                border-left: 4px solid var(--primary-color);
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-        </style>
-        """, unsafe_allow_html=True)
+        apply_dark_theme()
     else:
-        st.markdown("""
-        <style>
-            :root {
-                --primary-color: #4a90e2;
-                --background-color: #f6f9fc;
-                --secondary-background-color: #ffffff;
-                --text-color: #333333;
-                --border-color: #e1e1e1;
-            }
-            
-            .main {
-                background-color: var(--background-color);
-            }
-            
-            .stButton>button {
-                background: linear-gradient(90deg, #007cf0, #00dfd8) !important;
-                color: white !important;
-                border: none !important;
-                transition: all 0.3s ease;
-            }
-            
-            .stButton>button:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            }
-            
-            .metric-card {
-                background-color: var(--secondary-background-color);
-                padding: 1rem;
-                border-radius: 0.5rem;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                margin-bottom: 1rem;
-                border-left: 4px solid var(--primary-color);
-            }
-        </style>
-        """, unsafe_allow_html=True)
+        apply_light_theme()
+
+def apply_dark_theme():
+    """Apply dark theme styling."""
+    st.markdown("""
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --background-color: #1e1e1e;
+            --secondary-background-color: #2d2d2d;
+            --text-color: #f5f5f5;
+            --border-color: #6a6a6a;
+        }
+        
+        .main {
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+        
+        .stButton>button {
+            background-color: var(--secondary-background-color) !important;
+            color: var(--text-color) !important;
+            border: 1px solid var(--border-color) !important;
+            transition: all 0.3s ease;
+        }
+        
+        .stButton>button:hover {
+            background-color: var(--primary-color) !important;
+            transform: translateY(-2px);
+        }
+        
+        .metric-card {
+            background-color: var(--secondary-background-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--primary-color);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stTextInput>div>div>input {
+            background-color: var(--secondary-background-color);
+            color: var(--text-color);
+        }
+        
+        .stDataFrame {
+            background-color: var(--secondary-background-color);
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+def apply_light_theme():
+    """Apply light theme styling."""
+    st.markdown("""
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --background-color: #f6f9fc;
+            --secondary-background-color: #ffffff;
+            --text-color: #333333;
+            --border-color: #e1e1e1;
+        }
+        
+        .main {
+            background-color: var(--background-color);
+        }
+        
+        .stButton>button {
+            background: linear-gradient(90deg, #007cf0, #00dfd8) !important;
+            color: white !important;
+            border: none !important;
+            transition: all 0.3s ease;
+        }
+        
+        .stButton>button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .metric-card {
+            background-color: var(--secondary-background-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--primary-color);
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ====================
 # UTILITY FUNCTIONS
@@ -231,6 +193,49 @@ def evaluate_status(break_str, work_str):
             return "❌ Incomplete"
     except:
         return ""
+
+def export_to_csv(sheet):
+    """Export sheet data to CSV file."""
+    try:
+        data = sheet.get_all_values()
+        filename = f"Daily_Logs_{datetime.datetime.now().strftime('%Y-%m-%d')}.csv"
+        with open(filename, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerows(data)
+        return filename
+    except Exception as e:
+        st.error(f"Export failed: {str(e)}")
+        return None
+
+def send_email_with_csv(to_email, file_path):
+    """Send email with CSV attachment."""
+    try:
+        if not os.path.exists(file_path):
+            st.error("File not found for email attachment")
+            return False
+
+        msg = EmailMessage()
+        msg["Subject"] = f"Daily Employee Report - {datetime.datetime.now().strftime('%Y-%m-%d')}"
+        msg["From"] = config["EMAIL_ADDRESS"]
+        msg["To"] = to_email
+        msg.set_content("Attached is the daily employee report from PixsEdit Tracker.")
+
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+            msg.add_attachment(
+                file_data,
+                maintype="text",
+                subtype="csv",
+                filename=os.path.basename(file_path),
+            )
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(config["EMAIL_ADDRESS"], config["EMAIL_PASSWORD"])
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Email failed: {str(e)}")
+        return False
 
 # ====================
 # GOOGLE SHEETS INTEGRATION
@@ -297,11 +302,57 @@ def init_session_state():
         st.session_state.break_ended = False
     if "persistent_login" not in st.session_state:
         st.session_state.persistent_login = False
-    if "dark_mode" not in st.session_state:
-        current_hour = datetime.datetime.now().hour
-        st.session_state.dark_mode = current_hour < 6 or current_hour >= 18
-    if "last_refresh" not in st.session_state:
-        st.session_state.last_refresh = time.time()
+
+def persist_session():
+    """Persist session state using browser local storage."""
+    html_string = """
+    <script>
+    // Store session state in localStorage
+    const storeState = (key, value) => {
+        localStorage.setItem(key, value);
+    }
+    
+    // Retrieve session state from localStorage
+    const getState = (key) => {
+        return localStorage.getItem(key);
+    }
+    
+    // Check if we should persist the login state
+    if (typeof window !== 'undefined') {
+        // Store the Streamlit component value in localStorage
+        if (%s) {
+            storeState('persistent_login', 'true');
+            storeState('username', '%s');
+        } else {
+            storeState('persistent_login', 'false');
+            localStorage.removeItem('username');
+        }
+    }
+    </script>
+    """ % ("true" if st.session_state.get("persistent_login", False) else "false", 
+           st.session_state.get("user", ""))
+    
+    html(html_string, height=0, width=0)
+
+def check_persistent_session():
+    """Check for persistent session in browser storage."""
+    html_string = """
+    <script>
+    // Check for persistent login on page load
+    if (typeof window !== 'undefined') {
+        const persistentLogin = localStorage.getItem('persistent_login') === 'true';
+        const username = localStorage.getItem('username');
+        
+        if (persistentLogin && username) {
+            window.parent.postMessage({
+                type: 'PERSISTENT_SESSION',
+                username: username
+            }, '*');
+        }
+    }
+    </script>
+    """
+    html(html_string, height=0, width=0)
 
 # ====================
 # SIDEBAR COMPONENTS
@@ -310,15 +361,8 @@ def render_sidebar():
     """Render the sidebar components."""
     with st.sidebar:
         st.title("PixsEdit Tracker")
-        
-        # Theme toggle
-        st.session_state.dark_mode = st.toggle(
-            "🌙 Dark Mode", 
-            value=st.session_state.dark_mode,
-            key="dark_mode_toggle"
-        )
-        apply_theme()
-        
+        st.caption("🌓 Auto theme applied based on time of day")
+
         render_avatar_section()
         render_login_section()
 
@@ -350,13 +394,20 @@ def render_login_section():
     if st.session_state.user:
         st.session_state.persistent_login = st.checkbox(
             "Keep me logged in", 
-            value=st.session_state.persistent_login,
+            value=st.session_state.get("persistent_login", False),
             key="persistent_login_checkbox"
         )
-        update_persistent_session(st.session_state.user, st.session_state.persistent_login)
+        persist_session()
         
         if st.button("🚪 Logout", key="logout_button"):
-            logout_user()
+            st.session_state.user = None
+            st.session_state.row_index = None
+            st.session_state.break_started = False
+            st.session_state.break_ended = False
+            st.session_state.last_action = None
+            st.session_state.persistent_login = False
+            persist_session()
+            st.rerun()
     else:
         st.markdown("### Login")
         username = st.text_input("👤 Username", key="username_input")
@@ -367,17 +418,6 @@ def render_login_section():
             handle_login(username, password)
         if col2.button("Register", key="register_button"):
             handle_registration(username, password)
-
-def logout_user():
-    """Handle user logout process."""
-    st.session_state.user = None
-    st.session_state.row_index = None
-    st.session_state.break_started = False
-    st.session_state.break_ended = False
-    st.session_state.last_action = None
-    st.session_state.persistent_login = False
-    update_persistent_session("", False)
-    st.rerun()
 
 def handle_login(username, password):
     """Process login attempt."""
@@ -396,6 +436,7 @@ def handle_login(username, password):
         st.error("Invalid credentials.")
     else:
         st.session_state.user = username
+        st.session_state.persistent_login = st.session_state.get("persistent_login", False)
         _, sheet2 = connect_to_google_sheets()
         if sheet2 is None:
             return
@@ -436,10 +477,23 @@ def handle_registration(username, password):
         st.success("Registration successful! Please login.")
 
 # ====================
-# ADMIN DASHBOARD
+# MAIN CONTENT AREAS
 # ====================
+def render_main_content():
+    """Render the appropriate content based on user state."""
+    st.markdown("<div class='main'>", unsafe_allow_html=True)
+
+    if st.session_state.user == "admin":
+        render_admin_dashboard()
+    elif st.session_state.user:
+        render_employee_dashboard()
+    else:
+        render_landing_page()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
 def render_admin_dashboard():
-    """Render the admin dashboard with live updates."""
+    """Render the admin dashboard."""
     st.title("📊 Admin Dashboard")
     sheet1, sheet2 = connect_to_google_sheets()
     if sheet2 is None:
@@ -448,12 +502,6 @@ def render_admin_dashboard():
     try:
         data = sheet2.get_all_records()
         df = pd.DataFrame(data) if data else pd.DataFrame()
-        
-        # Calculate who is currently on break
-        df['On Break Now'] = df.apply(lambda row: 
-            pd.notna(row.get('Break Start')) and pd.isna(row.get('Break End')), 
-            axis=1
-        )
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         df = pd.DataFrame()
@@ -463,14 +511,9 @@ def render_admin_dashboard():
     render_admin_analytics(df)
     render_reporting_tools(sheet2)
 
-    # Auto-refresh logic
-    if time.time() - st.session_state.last_refresh > 30:  # 30 seconds
-        st.session_state.last_refresh = time.time()
-        st.rerun()
-
 def render_admin_metrics(sheet1, df):
-    """Render admin metrics cards with live data."""
-    st.subheader("📈 Live Employee Overview")
+    """Render admin metrics cards."""
+    st.subheader("📈 Employee Overview")
     col1, col2, col3, col4 = st.columns(4)
 
     try:
@@ -479,7 +522,7 @@ def render_admin_metrics(sheet1, df):
         total_employees = 0
 
     active_today = len(df) if not df.empty else 0
-    on_break_now = df['On Break Now'].sum() if not df.empty and 'On Break Now' in df.columns else 0
+    on_break = len(df[df["Break Start"].notna() & df["Break End"].isna()]) if not df.empty else 0
     completed = len(df[df["Status"] == "✅ Complete"]) if not df.empty and "Status" in df.columns else 0
 
     with col1:
@@ -508,8 +551,8 @@ def render_admin_metrics(sheet1, df):
         st.markdown(
             f"""
             <div class="metric-card">
-                <h3>On Break Now</h3>
-                <h1>{on_break_now}</h1>
+                <h3>On Break</h3>
+                <h1>{on_break}</h1>
             </div>
             """,
             unsafe_allow_html=True,
@@ -526,25 +569,11 @@ def render_admin_metrics(sheet1, df):
             unsafe_allow_html=True,
         )
 
-    # Display real-time break status
-    if on_break_now > 0:
-        st.markdown("### 🚨 Employees Currently on Break")
-        on_break_df = df[df['On Break Now']][['Employee Name', 'Break Start']]
-        if not on_break_df.empty:
-            st.dataframe(on_break_df, use_container_width=True)
-        else:
-            st.write("No employees currently on break")
-
 def render_employee_directory(df):
     """Render employee directory table."""
     st.subheader("👥 Employee Directory")
     if not df.empty:
-        # Format the dataframe for better display
-        display_df = df.copy()
-        if 'On Break Now' in display_df.columns:
-            display_df['On Break Now'] = display_df['On Break Now'].map({True: 'Yes', False: 'No'})
-        
-        st.dataframe(display_df, use_container_width=True, height=400)
+        st.dataframe(df, use_container_width=True, height=400)
     else:
         st.warning("No employee data available")
 
@@ -639,52 +668,6 @@ def render_reporting_tools(sheet2):
                         key="download_csv_button"
                     )
 
-def export_to_csv(sheet):
-    """Export sheet data to CSV file."""
-    try:
-        data = sheet.get_all_values()
-        filename = f"Daily_Logs_{datetime.datetime.now().strftime('%Y-%m-%d')}.csv"
-        with open(filename, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerows(data)
-        return filename
-    except Exception as e:
-        st.error(f"Export failed: {str(e)}")
-        return None
-
-def send_email_with_csv(to_email, file_path):
-    """Send email with CSV attachment."""
-    try:
-        if not os.path.exists(file_path):
-            st.error("File not found for email attachment")
-            return False
-
-        msg = EmailMessage()
-        msg["Subject"] = f"Daily Employee Report - {datetime.datetime.now().strftime('%Y-%m-%d')}"
-        msg["From"] = config["EMAIL_ADDRESS"]
-        msg["To"] = to_email
-        msg.set_content("Attached is the daily employee report from PixsEdit Tracker.")
-
-        with open(file_path, "rb") as f:
-            file_data = f.read()
-            msg.add_attachment(
-                file_data,
-                maintype="text",
-                subtype="csv",
-                filename=os.path.basename(file_path),
-            )
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(config["EMAIL_ADDRESS"], config["EMAIL_PASSWORD"])
-            smtp.send_message(msg)
-        return True
-    except Exception as e:
-        st.error(f"Email failed: {str(e)}")
-        return False
-
-# ====================
-# EMPLOYEE DASHBOARD
-# ====================
 def render_employee_dashboard():
     """Render the employee dashboard."""
     st.title(f"👋 Welcome, {st.session_state.user}")
@@ -846,10 +829,22 @@ def render_time_tracking_controls(sheet2, row):
                     sheet2.update_cell(st.session_state.row_index, 8, status)
 
                     # Clear session state
-                    logout_user()
+                    st.session_state.user = None
+                    st.session_state.row_index = None
+                    st.session_state.break_started = False
+                    st.session_state.break_ended = False
+                    st.session_state.last_action = None
+                    st.session_state.persistent_login = False
+                    persist_session()
+                    
+                    # Small delay
+                    time.sleep(1.5)
                     
                     # Show success message
                     st.success(f"Logged out. Worked: {total_str}")
+                    
+                    # Force rerun
+                    st.rerun()
                 
             except Exception as e:
                 st.error(f"Logout error: {str(e)}")
@@ -860,9 +855,6 @@ def render_time_tracking_controls(sheet2, row):
     elif st.session_state.get('last_action') == "break_end":
         st.info("Break completed")
 
-# ====================
-# LANDING PAGE
-# ====================
 def render_landing_page():
     """Render the landing page for non-logged in users."""
     st.title("🌟 PixsEdit Employee Tracker")
@@ -883,15 +875,23 @@ def render_landing_page():
 # ====================
 def main():
     """Main application entry point."""
-    init_session_state()
-    
-    if st.session_state.user == "admin":
-        show_admin_dashboard()
-    elif st.session_state.user:
-        show_employee_dashboard()
-    else:
-        show_landing_page()
-        show_login_form()
+    try:
+        setup_page()
+        init_session_state()
+        
+        # Check for persistent session
+        if not st.session_state.user and st.session_state.get("persistent_login", False):
+            check_persistent_session()
+            
+            # Handle message from JavaScript
+            if st.session_state.get("username_from_storage"):
+                st.session_state.user = st.session_state.username_from_storage
+                st.rerun()
+        
+        render_sidebar()
+        render_main_content()
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
 
 if __name__ == "__main__":
     main()
