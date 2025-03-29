@@ -52,6 +52,27 @@ def setup_page():
         initial_sidebar_state="expanded"
     )
     apply_cream_theme()
+    
+    # Initialize session state early
+    init_session_state()
+    
+    # Check for persistent login on refresh
+    if st.session_state.get('persistent_login') and st.session_state.user:
+        # Reconnect to Google Sheets to verify session
+        try:
+            sheet1, sheet2 = connect_to_google_sheets()
+            if sheet2:
+                # Verify the user still exists in the sheet
+                rows = sheet2.get_all_values()
+                user_found = any(row and row[0] == st.session_state.user for row in rows[1:])
+                if not user_found:
+                    st.session_state.user = None
+                    st.session_state.persistent_login = False
+                    st.rerun()
+        except:
+            st.session_state.user = None
+            st.session_state.persistent_login = False
+            st.rerun()
 
 def apply_cream_theme():
     """Apply elegant cream white theme with soft accents."""
@@ -289,7 +310,7 @@ def evaluate_status(break_str, work_str):
         if work_min >= 540 and break_min <= 50:
             return "<span style='color: #5cb85c'>✅ Complete</span>"
         elif break_min > 50:
-           return "<span style='color: #d9534f'>❌ Over Break</span>"
+            return "<span style='color: #d9534f'>❌ Over Break</span>"
         else:
             return "<span style='color: #d9534f'>❌ Incomplete</span>"
     except:
@@ -388,19 +409,17 @@ def connect_to_google_sheets():
 # SESSION STATE MANAGEMENT
 # ====================
 def init_session_state():
-    """Initialize session state variables."""
-    if "user" not in st.session_state:
+    """Initialize session state variables with persistent login support."""
+    if "initialized" not in st.session_state:
+        st.session_state.initialized = True
         st.session_state.user = None
-    if "row_index" not in st.session_state:
         st.session_state.row_index = None
-    if "avatar_uploaded" not in st.session_state:
         st.session_state.avatar_uploaded = False
-    if "last_action" not in st.session_state:
         st.session_state.last_action = None
-    if "break_started" not in st.session_state:
         st.session_state.break_started = False
-    if "break_ended" not in st.session_state:
         st.session_state.break_ended = False
+        st.session_state.logout_confirmation = False
+        st.session_state.persistent_login = False  # Persistent login flag
 
 # ====================
 # SIDEBAR COMPONENTS
@@ -457,18 +476,66 @@ def image_to_base64(image_path):
         return base64.b64encode(img_file.read()).decode('utf-8')
 
 def render_login_section():
-    """Handle login/logout functionality."""
+    """Handle login/logout functionality with persistent sessions."""
     st.markdown("---")
     if st.session_state.user:
         if st.button("🚪 Logout", use_container_width=True):
-            st.session_state.user = None
-            st.session_state.row_index = None
-            st.session_state.break_started = False
-            st.session_state.break_ended = False
-            st.session_state.last_action = None
-            st.success("Logged out successfully!")
-            time.sleep(1)
-            st.rerun()
+            st.session_state.logout_confirmation = True
+            
+        if st.session_state.get('logout_confirmation'):
+            st.warning("Are you sure you want to logout?")
+            col1, col2 = st.columns(2)
+            
+            if col1.button("✅ Yes, Logout", use_container_width=True):
+                try:
+                    # Get current sheet data
+                    _, sheet2 = connect_to_google_sheets()
+                    if sheet2 and st.session_state.row_index:
+                        row = sheet2.row_values(st.session_state.row_index)
+                        if len(row) > 1 and row[1]:
+                            login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+                            logout_time = datetime.datetime.now()
+                            
+                            # Update logout time
+                            sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
+
+                            # Calculate break duration if exists
+                            break_mins = 0
+                            if len(row) > 5 and row[5]:
+                                try:
+                                    h, m = map(int, row[5].split(":"))
+                                    break_mins = h * 60 + m
+                                except:
+                                    break_mins = 0
+
+                            # Calculate total work time
+                            total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
+                            total_str = format_duration(total_mins)
+                            
+                            # Update work time and status
+                            sheet2.update_cell(st.session_state.row_index, 7, total_str)
+                            status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
+                            sheet2.update_cell(st.session_state.row_index, 8, status)
+
+                except Exception as e:
+                    st.error(f"Error saving logout data: {str(e)}")
+                
+                # Clear all session state
+                st.session_state.user = None
+                st.session_state.row_index = None
+                st.session_state.break_started = False
+                st.session_state.break_ended = False
+                st.session_state.last_action = None
+                st.session_state.logout_confirmation = False
+                st.session_state.persistent_login = False  # Clear persistent flag
+                
+                st.success("Logged out successfully!")
+                time.sleep(1)
+                st.rerun()
+            
+            if col2.button("❌ Cancel", use_container_width=True):
+                st.session_state.logout_confirmation = False
+                st.rerun()
     else:
         st.markdown("### 🔐 Authentication")
         username = st.text_input("👤 Username", placeholder="Enter your username")
@@ -481,7 +548,7 @@ def render_login_section():
             handle_registration(username, password)
 
 def handle_login(username, password):
-    """Process login attempt."""
+    """Process login attempt with persistent session support."""
     if not username or not password:
         st.error("Please enter both username and password")
         return
@@ -497,6 +564,7 @@ def handle_login(username, password):
         st.error("Invalid credentials. Please try again.")
     else:
         st.session_state.user = username
+        st.session_state.persistent_login = True  # Set persistent flag
         _, sheet2 = connect_to_google_sheets()
         if sheet2 is None:
             return
@@ -544,11 +612,13 @@ def handle_registration(username, password):
 # MAIN CONTENT AREAS
 # ====================
 def render_main_content():
-    """Render the appropriate content based on user state."""
-    if st.session_state.user == "admin":
-        render_admin_dashboard()
-    elif st.session_state.user:
-        render_employee_dashboard()
+    """Render the appropriate content based on persistent session state."""
+    # Check if user was logged in before refresh
+    if st.session_state.get('persistent_login') and st.session_state.user:
+        if st.session_state.user == "admin":
+            render_admin_dashboard()
+        else:
+            render_employee_dashboard()
     else:
         render_landing_page()
 
@@ -562,6 +632,14 @@ def render_admin_dashboard():
     try:
         data = sheet2.get_all_records()
         df = pd.DataFrame(data) if data else pd.DataFrame()
+        
+        # Add 'On Break' status column
+        df['Current Status'] = df.apply(
+            lambda row: "🟢 Working" if pd.isna(row['Break Start']) 
+            else "🟡 On Break" if pd.isna(row['Break End']) 
+            else "🟢 Working",
+            axis=1
+        )
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         df = pd.DataFrame()
@@ -582,7 +660,7 @@ def render_admin_metrics(sheet1, df):
         total_employees = 0
 
     active_today = len(df) if not df.empty else 0
-    on_break = len(df[df["Break Start"].notna() & df["Break End"].isna()]) if not df.empty else 0
+    on_break = len(df[df['Current Status'] == "🟡 On Break"]) if not df.empty else 0
     completed = len(df[df["Status"] == "✅ Complete"]) if not df.empty and "Status" in df.columns else 0
 
     with col1:
@@ -611,7 +689,7 @@ def render_admin_metrics(sheet1, df):
         st.markdown(
             f"""
             <div class="metric-card">
-                <h3>On Break</h3>
+                <h3>On Break Now</h3>
                 <h1>{on_break}</h1>
             </div>
             """,
@@ -638,7 +716,12 @@ def render_employee_directory(df):
         if 'Status' in display_df.columns:
             display_df['Status'] = display_df['Status'].apply(lambda x: f"<span style='color: {'#5cb85c' if 'Complete' in str(x) else '#d9534f'}'>{x}</span>")
         
-        st.dataframe(display_df, use_container_width=True, height=400)
+        if 'Current Status' in display_df.columns:
+            display_df['Current Status'] = display_df['Current Status'].apply(
+                lambda x: f"<span style='color: {'#5cb85c' if 'Working' in str(x) else '#f0ad4e'}'>{x}</span>"
+            )
+        
+        st.write(display_df.to_html(escape=False), unsafe_allow_html=True)
     else:
         st.warning("No employee data available for today")
 
@@ -871,44 +954,56 @@ def render_time_tracking_controls(sheet2, row):
 
     with action_col3:
         if st.button("🔒 Logout", use_container_width=True):
-            if len(row) <= 1 or not row[1]:
-                st.error("No login time recorded")
-                return
+            st.session_state.logout_confirmation = True
+            
+        if st.session_state.get('logout_confirmation'):
+            st.warning("Are you sure you want to logout?")
+            col1, col2 = st.columns(2)
+            
+            if col1.button("✅ Yes, Logout", use_container_width=True):
+                try:
+                    if len(row) <= 1 or not row[1]:
+                        st.error("No login time recorded")
+                        return
 
-            try:
-                login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
-                logout_time = datetime.datetime.now()
-                
-                with st.spinner("Processing logout..."):
-                    sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
-
-                    break_mins = 0
-                    if len(row) > 5 and row[5]:
-                        try:
-                            h, m = map(int, row[5].split(":"))
-                            break_mins = h * 60 + m
-                        except:
-                            break_mins = 0
-
-                    total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
-                    total_str = format_duration(total_mins)
+                    login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+                    logout_time = datetime.datetime.now()
                     
-                    sheet2.update_cell(st.session_state.row_index, 7, total_str)
-                    status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
-                    sheet2.update_cell(st.session_state.row_index, 8, status)
+                    with st.spinner("Processing logout..."):
+                        sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
 
-                    st.session_state.user = None
-                    st.session_state.row_index = None
-                    st.session_state.break_started = False
-                    st.session_state.break_ended = False
-                    st.session_state.last_action = None
-                    
-                    time.sleep(1.5)
-                    st.success(f"Logged out successfully. Worked: {total_str}")
-                    time.sleep(1.5)
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Logout error: {str(e)}")
+                        break_mins = 0
+                        if len(row) > 5 and row[5]:
+                            try:
+                                h, m = map(int, row[5].split(":"))
+                                break_mins = h * 60 + m
+                            except:
+                                break_mins = 0
+
+                        total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
+                        total_str = format_duration(total_mins)
+                        
+                        sheet2.update_cell(st.session_state.row_index, 7, total_str)
+                        status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
+                        sheet2.update_cell(st.session_state.row_index, 8, status)
+
+                        st.session_state.user = None
+                        st.session_state.row_index = None
+                        st.session_state.break_started = False
+                        st.session_state.break_ended = False
+                        st.session_state.last_action = None
+                        st.session_state.logout_confirmation = False
+                        st.session_state.persistent_login = False
+                        
+                        st.success("Logged out successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Logout error: {str(e)}")
+            
+            if col2.button("❌ Cancel", use_container_width=True):
+                st.session_state.logout_confirmation = False
+                st.rerun()
 
 def render_landing_page():
     """Render the landing page for non-logged in users."""
