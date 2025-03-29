@@ -11,8 +11,35 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import time
-from streamlit.components.v1 import html
-from streamlit_autorefresh import st_autorefresh 
+
+# ====================
+# CONFIGURATION
+# ====================
+def load_config():
+    """Load configuration from secrets and environment."""
+    try:
+        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
+                 "https://www.googleapis.com/auth/drive"]
+        creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
+        client = gspread.authorize(creds)
+
+        return {
+            "SPREADSHEET_ID": st.secrets["SPREADSHEET_ID"],
+            "EMAIL_ADDRESS": st.secrets["EMAIL_ADDRESS"],
+            "EMAIL_PASSWORD": st.secrets["EMAIL_PASSWORD"],
+            "client": client,
+            "AVATAR_DIR": Path("avatars"),
+        }
+    except Exception as e:
+        st.error(f"Configuration error: {str(e)}")
+        st.stop()
+        return None
+
+config = load_config()
+AVATAR_DIR = config["AVATAR_DIR"]
+AVATAR_DIR.mkdir(exist_ok=True)
+
 # ====================
 # PAGE SETUP
 # ====================
@@ -235,35 +262,6 @@ def apply_cream_theme():
     """, unsafe_allow_html=True)
 
 # ====================
-# CONFIGURATION
-# ====================
-def load_config():
-    """Load configuration from secrets and environment."""
-    try:
-        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
-                 "https://www.googleapis.com/auth/drive"]
-        creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
-        client = gspread.authorize(creds)
-
-        return {
-            "SPREADSHEET_ID": st.secrets["SPREADSHEET_ID"],
-            "EMAIL_ADDRESS": st.secrets["EMAIL_ADDRESS"],
-            "EMAIL_PASSWORD": st.secrets["EMAIL_PASSWORD"],
-            "client": client,
-            "AVATAR_DIR": Path("avatars"),
-        }
-    except Exception as e:
-        st.error(f"Configuration error: {str(e)}")
-        st.stop()
-        return None
-
-config = load_config()
-AVATAR_DIR = config["AVATAR_DIR"]
-AVATAR_DIR.mkdir(exist_ok=True)
-
-
-# ====================
 # UTILITY FUNCTIONS
 # ====================
 def format_duration(minutes):
@@ -289,11 +287,11 @@ def evaluate_status(break_str, work_str):
         work_min = to_minutes(work_str) if work_str else 0
 
         if work_min >= 540 and break_min <= 50:
-            return"<span style='color: #5cb85c'>✅ Complete</span>"
+            return "✅ Complete"
         elif break_min > 50:
-            return "<span style='color: #d9534f'>❌ Over Break</span>"
+            return "❌ Over Break"
         else:
-            return "<span style='color: #d9534f'>❌ Incomplete</span>"
+            return "❌ Incomplete"
     except:
         return ""
 
@@ -390,51 +388,19 @@ def connect_to_google_sheets():
 # SESSION STATE MANAGEMENT
 # ====================
 def init_session_state():
+    """Initialize session state variables."""
     if "user" not in st.session_state:
         st.session_state.user = None
     if "row_index" not in st.session_state:
         st.session_state.row_index = None
-    if "persistent_login" not in st.session_state:
-        st.session_state.persistent_login = False
-def persist_session():
-    html_string = """
-    <script>
-    const storeState = (key, value) => {
-        localStorage.setItem(key, value);
-    }
-
-    if (typeof window !== 'undefined') {
-        if (%s) {
-            storeState('persistent_login', 'true');
-            storeState('username', '%s');
-        } else {
-            storeState('persistent_login', 'false');
-            localStorage.removeItem('username');
-        }
-    }
-    </script>
-    """ % ("true" if st.session_state.get("persistent_login", False) else "false",
-           st.session_state.get("user", ""))
-
-    html(html_string, height=0, width=0)
-
-def check_persistent_session():
-    js_code = """
-    <script>
-    const persistentLogin = localStorage.getItem('persistent_login') === 'true';
-    const username = localStorage.getItem('username');
-    if (persistentLogin && username) {
-        const streamlitDoc = window.parent.document;
-        const input = streamlitDoc.querySelector('input[data-testid=\"stTextInput\"]');
-        if (input) {
-            input.value = username;
-            const event = new Event('input', { bubbles: true });
-            input.dispatchEvent(event);
-        }
-    }
-    </script>
-    """
-    html(js_code, height=0)
+    if "avatar_uploaded" not in st.session_state:
+        st.session_state.avatar_uploaded = False
+    if "last_action" not in st.session_state:
+        st.session_state.last_action = None
+    if "break_started" not in st.session_state:
+        st.session_state.break_started = False
+    if "break_ended" not in st.session_state:
+        st.session_state.break_ended = False
 
 # ====================
 # SIDEBAR COMPONENTS
@@ -587,7 +553,7 @@ def render_main_content():
         render_landing_page()
 
 def render_admin_dashboard():
-    """Render the admin dashboard with break status indicators."""
+    """Render the admin dashboard."""
     st.title("📊 Admin Dashboard")
     sheet1, sheet2 = connect_to_google_sheets()
     if sheet2 is None:
@@ -596,14 +562,6 @@ def render_admin_dashboard():
     try:
         data = sheet2.get_all_records()
         df = pd.DataFrame(data) if data else pd.DataFrame()
-        
-        # Add 'On Break' status column
-        df['Current Status'] = df.apply(
-            lambda row: "🟢 Working" if pd.isna(row['Break Start']) 
-            else "🟡 On Break" if pd.isna(row['Break End']) 
-            else "🟢 Working",
-            axis=1
-        )
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         df = pd.DataFrame()
@@ -612,87 +570,6 @@ def render_admin_dashboard():
     render_employee_directory(df)
     render_admin_analytics(df)
     render_reporting_tools(sheet2)
-
-def render_employee_directory(df):
-    """Render employee directory table with status indicators."""
-    st.subheader("👥 Employee Directory")
-    if not df.empty:
-        # Format the DataFrame for better display
-        display_df = df.copy()
-        
-        # Colorize status columns
-        display_df['Current Status'] = display_df['Current Status'].apply(
-            lambda x: f"<span style='color: #5cb85c'>{x}</span>" if "Working" in x 
-            else f"<span style='color: #f0ad4e'>{x}</span>"
-        )
-        
-        if 'Status' in display_df.columns:
-            display_df['Status'] = display_df['Status'].apply(
-                lambda x: f"<span style='color: #5cb85c'>{x}</span>" if 'Complete' in str(x) 
-                else f"<span style='color: #d9534f'>{x}</span>"
-            )
-        
-        st.write(display_df.to_html(escape=False), unsafe_allow_html=True)
-    else:
-        st.warning("No employee data available for today")
-
-def render_admin_metrics(sheet1, df):
-    """Render admin metrics cards with break status."""
-    st.subheader("📈 Employee Overview")
-    col1, col2, col3, col4 = st.columns(4)
-
-    try:
-        total_employees = len(sheet1.get_all_values()) - 1
-    except:
-        total_employees = 0
-
-    active_today = len(df) if not df.empty else 0
-    on_break = len(df[df['Current Status'] == "🟡 On Break"]) if not df.empty else 0
-    completed = len(df[df['Status'] == "✅ Complete"]) if not df.empty and "Status" in df.columns else 0
-
-    with col1:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <h3>Total Employees</h3>
-                <h1>{total_employees}</h1>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col2:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <h3>Active Today</h3>
-                <h1>{active_today}</h1>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col3:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <h3>On Break Now</h3>
-                <h1>{on_break}</h1>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with col4:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <h3>Completed</h3>
-                <h1>{completed}</h1>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
 def render_admin_metrics(sheet1, df):
     """Render admin metrics cards."""
@@ -761,7 +638,7 @@ def render_employee_directory(df):
         if 'Status' in display_df.columns:
             display_df['Status'] = display_df['Status'].apply(lambda x: f"<span style='color: {'#5cb85c' if 'Complete' in str(x) else '#d9534f'}'>{x}</span>")
         
-        st.markdown(df.to_html(escape=False, index=False), unsafe_allow_html=True)
+        st.dataframe(display_df, use_container_width=True, height=400)
     else:
         st.warning("No employee data available for today")
 
@@ -993,68 +870,51 @@ def render_time_tracking_controls(sheet2, row):
                 st.session_state.break_ended = False
 
     with action_col3:
-        if st.button("🔒 Logout", use_container_width=True, key="logout_btn"):
-            st.session_state.logout_confirmation = True
-            
-        if st.session_state.get('logout_confirmation'):
-            st.warning("Are you sure you want to logout?")
-            col1, col2 = st.columns(2)
-            
-            if col1.button("✅ Yes, Logout", use_container_width=True):
-                try:
-                    if len(row) <= 1 or not row[1]:
-                        st.error("No login time recorded")
-                        return
+        if st.button("🔒 Logout", use_container_width=True):
+            if len(row) <= 1 or not row[1]:
+                st.error("No login time recorded")
+                return
 
-                    login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
-                    logout_time = datetime.datetime.now()
+            try:
+                login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+                logout_time = datetime.datetime.now()
+                
+                with st.spinner("Processing logout..."):
+                    sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
+
+                    break_mins = 0
+                    if len(row) > 5 and row[5]:
+                        try:
+                            h, m = map(int, row[5].split(":"))
+                            break_mins = h * 60 + m
+                        except:
+                            break_mins = 0
+
+                    total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
+                    total_str = format_duration(total_mins)
                     
-                    with st.spinner("Processing logout..."):
-                        # Update logout time (column 3)
-                        sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
+                    sheet2.update_cell(st.session_state.row_index, 7, total_str)
+                    status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
+                    sheet2.update_cell(st.session_state.row_index, 8, status)
 
-                        # Calculate break duration
-                        break_mins = 0
-                        if len(row) > 5 and row[5]:
-                            try:
-                                h, m = map(int, row[5].split(":"))
-                                break_mins = h * 60 + m
-                            except:
-                                break_mins = 0
-
-                        # Calculate total work time
-                        total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
-                        total_str = format_duration(total_mins)
-                        
-                        # Update work time and status
-                        sheet2.update_cell(st.session_state.row_index, 7, total_str)
-                        status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
-                        sheet2.update_cell(st.session_state.row_index, 8, status)
-
-                        # Clear session state
-                        st.session_state.user = None
-                        st.session_state.row_index = None
-                        st.session_state.break_started = False
-                        st.session_state.break_ended = False
-                        st.session_state.last_action = None
-                        st.session_state.logout_confirmation = False
-                        
-                        time.sleep(1.5)
-                        st.success("Logged out successfully!")
-                        time.sleep(1.5)
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"Logout error: {str(e)}")
-            
-            if col2.button("❌ Cancel", use_container_width=True):
-                st.session_state.logout_confirmation = False
-                st.rerun()
+                    st.session_state.user = None
+                    st.session_state.row_index = None
+                    st.session_state.break_started = False
+                    st.session_state.break_ended = False
+                    st.session_state.last_action = None
+                    
+                    time.sleep(1.5)
+                    st.success(f"Logged out successfully. Worked: {total_str}")
+                    time.sleep(1.5)
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Logout error: {str(e)}")
 
 def render_landing_page():
     """Render the landing page for non-logged in users."""
     st.markdown("""
     <div class="landing-header">
-        <h1> PixsEdit Employee Tracker</h1>
+        <h1>🌟 PixsEdit Employee Tracker</h1>
         <p>An elegant solution for tracking work hours, breaks, and productivity with beautiful visualizations</p>
     </div>
     """, unsafe_allow_html=True)
@@ -1093,76 +953,17 @@ def render_landing_page():
     """, unsafe_allow_html=True)
 
 # ====================
-# Helper for live status styling
-# ====================
-def determine_current_status(row):
-    now = datetime.datetime.now()
-    if row["Logout Time"]:
-        return "🔴 Logged Out"
-    elif row["Break Start"] and not row["Break End"]:
-        return "☕ On Break"
-    else:
-        return "🟢 Working"
-
-def highlight_row(row):
-    if row["Current Status"] == "☕ On Break":
-        return ['background-color: #e6ffe6'] * len(row)
-    elif row["Break Duration"]:
-        try:
-            h, m = map(int, row["Break Duration"].split(":"))
-            total = h * 60 + m
-            if total > 50:
-                return ['background-color: #ffe6e6'] * len(row)
-        except:
-            pass
-    return [''] * len(row)
-# ====================
 # MAIN APP EXECUTION
 # ====================
 def main():
+    """Main application entry point."""
     try:
-        init_session_state()
-        check_persistent_session()
-        st_autorefresh(interval=60000)
-
-        # Setup UI and theme
         setup_page()
+        init_session_state()
         render_sidebar()
-
-        # Show dashboard or login
-        if st.session_state.user:
-            render_main_content()
-        else:
-            render_landing_page()  # this shows login inside main screen only
-
+        render_main_content()
     except Exception as e:
-        st.error(f"App error: {e}")
-
-
-# ====================
-# Helper for live status styling
-# ====================
-def determine_current_status(row):
-    now = datetime.datetime.now()
-    if row["Logout Time"]:
-        return "🔴 Logged Out"
-    elif row["Break Start"] and not row["Break End"]:
-        return "☕ On Break"
-    else:
-        return "🟢 Working"
-
-def highlight_row(row):
-    if row["Current Status"] == "☕ On Break":
-        return ['background-color: #e6ffe6'] * len(row)
-    elif row["Break Duration"]:
-        try:
-            h, m = map(int, row["Break Duration"].split(":"))
-            total = h * 60 + m
-            if total > 50:
-                return ['background-color: #ffe6e6'] * len(row)
-        except:
-            pass
-    return [''] * len(row)
+        st.error(f"Application error: {str(e)}")
 
 if __name__ == "__main__":
     main()
