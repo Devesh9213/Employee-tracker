@@ -1120,12 +1120,16 @@ def highlight_row(row):
 # MAIN APP EXECUTION
 # ====================
 def main():
-    try:
+try:
         init_session_state()
         check_persistent_session()
 
         # Auto-refresh every 60 seconds
         st_autorefresh(interval=60000)
+
+        setup_page()  # <-- ensure page theme is applied
+        render_sidebar()
+        render_main_content()
 
         if st.session_state.user:
             st.write(f"Welcome back, {st.session_state.user}!")
