@@ -388,19 +388,12 @@ def connect_to_google_sheets():
 # SESSION STATE MANAGEMENT
 # ====================
 def init_session_state():
-    """Initialize session state variables."""
     if "user" not in st.session_state:
         st.session_state.user = None
     if "row_index" not in st.session_state:
         st.session_state.row_index = None
-    if "avatar_uploaded" not in st.session_state:
-        st.session_state.avatar_uploaded = False
-    if "last_action" not in st.session_state:
-        st.session_state.last_action = None
-    if "break_started" not in st.session_state:
-        st.session_state.break_started = False
-    if "break_ended" not in st.session_state:
-        st.session_state.break_ended = False
+    if "persistent_login" not in st.session_state:
+        st.session_state.persistent_login = False
 
 # ====================
 # SIDEBAR COMPONENTS
