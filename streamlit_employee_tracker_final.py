@@ -46,13 +46,12 @@ AVATAR_DIR.mkdir(exist_ok=True)
 def setup_page():
     """Configure page settings and theme."""
     st.set_page_config(
-        page_title="🌟 PixsEdit Employee Tracker",
+        page_title=" PixsEdit Employee Tracker",
         layout="wide",
-        page_icon="🕒",
-    )
+        )
     current_hour = datetime.datetime.now().hour
     auto_dark = current_hour < 6 or current_hour >= 18
-    dark_mode = st.sidebar.toggle("🌙 Dark Mode", value=auto_dark)
+    dark_mode = st.sidebar.toggle(" Dark Mode", value=auto_dark)
 
     if dark_mode:
         apply_dark_theme()
