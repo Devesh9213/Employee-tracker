@@ -62,22 +62,26 @@ def apply_dark_theme():
     """Apply dark theme styling."""
     st.markdown("""
     <style>
-        .main {
-            background-color: #1e1e1e;
-            color: #f5f5f5;
-        }
-        .stButton>button {
-            background-color: #4a4a4a !important;
-            color: white !important;
-            border: 1px solid #6a6a6a !important;
-        }
-        .metric-card {
-            background-color: #2d2d2d;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            border-left: 4px solid #4a90e2;
-        }
+.main {
+    background-color: #121212;
+    color: #e0e0e0;
+}
+
+.stButton>button {
+    background-color: #1f1f1f !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #333 !important;
+}
+
+.metric-card {
+    background-color: #1e1e1e;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #00bcd4; /* cyan accent */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
     </style>
     """, unsafe_allow_html=True)
 
