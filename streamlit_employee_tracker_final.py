@@ -638,7 +638,7 @@ def render_employee_directory(df):
         if 'Status' in display_df.columns:
             display_df['Status'] = display_df['Status'].apply(lambda x: f"<span style='color: {'#5cb85c' if 'Complete' in str(x) else '#d9534f'}'>{x}</span>")
         
-        st.dataframe(display_df, use_container_width=True, height=400)
+        st.markdown(df.to_html(escape=False, index=False), unsafe_allow_html=True)
     else:
         st.warning("No employee data available for today")
 
