@@ -1,5 +1,4 @@
 import os
-from streamlit.components.v1 import html
 import datetime
 import csv
 import streamlit as st
@@ -7,43 +6,21 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import smtplib
 from email.message import EmailMessage
-from typing import Optional, Dict, Any, Tuple, List
 import json
 from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import time
-from streamlit.components.v1 import html
 
 # ====================
 # CONFIGURATION
 # ====================
-def load_config() -> Optional[Dict[str, Any]]:
-    """Load and validate application configuration from Streamlit secrets.
-    
-    Returns:
-        Dictionary containing configuration if successful, None otherwise.
-        
-    Raises:
-        json.JSONDecodeError: If Google credentials are invalid JSON
-        KeyError: If required secrets are missing
-        Exception: For other unexpected errors
-    """
+def load_config():
+    """Load configuration from secrets and environment."""
     try:
-        # Validate required secrets exist
-        required_secrets = ["GOOGLE_CREDENTIALS"] + CONFIG_KEYS
-        missing = [key for key in required_secrets if key not in st.secrets]
-        if missing:
-            st.error(f"Missing required secrets: {', '.join(missing)}")
-            return None
-
-        # Parse Google credentials
+        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
+                 "https://www.googleapis.com/auth/drive"]
         creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-        if not isinstance(creds_dict, dict):
-            st.error("Google credentials must be a JSON object")
-            return None
-
-        # Create authorized client
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
         client = gspread.authorize(creds)
 
@@ -54,44 +31,28 @@ def load_config() -> Optional[Dict[str, Any]]:
             "client": client,
             "AVATAR_DIR": Path("avatars"),
         }
-
-    except json.JSONDecodeError as e:
-        st.error(f"Invalid Google credentials JSON: {str(e)}")
-    except KeyError as e:
-        st.error(f"Missing configuration key: {str(e)}")
     except Exception as e:
-        st.error(f"Unexpected configuration error: {str(e)}")
-    
-    return None
+        st.error(f"Configuration error: {str(e)}")
+        st.stop()
+        return None
 
+config = load_config()
+AVATAR_DIR = config["AVATAR_DIR"]
+AVATAR_DIR.mkdir(exist_ok=True)
 
 # ====================
 # PAGE SETUP
 # ====================
 def setup_page():
     """Configure page settings and theme."""
-def setup_page():
-    """Configure page settings and theme."""
     st.set_page_config(
-        page_title=" PixsEdit Employee Tracker",
+        page_title="🌟 PixsEdit Employee Tracker",
         layout="wide",
-        page_icon="",
-        initial_sidebar_state="expanded"
+        page_icon="🕒",
     )
-    
-    # Inject custom CSS to prevent auto-hiding of sidebar
-    st.markdown("""
-    <style>
-        [data-testid="stSidebar"][aria-expanded="true"]{
-            min-width: 300px;
-            max-width: 300px;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
     current_hour = datetime.datetime.now().hour
     auto_dark = current_hour < 6 or current_hour >= 18
-    dark_mode = st.sidebar.toggle("🌙 Dark Mode", value=auto_dark, key="dark_mode_toggle")
+    dark_mode = st.sidebar.toggle("🌙 Dark Mode", value=auto_dark)
 
     if dark_mode:
         apply_dark_theme()
@@ -102,47 +63,21 @@ def apply_dark_theme():
     """Apply dark theme styling."""
     st.markdown("""
     <style>
-        :root {
-            --primary-color: #4a90e2;
-            --background-color: #1e1e1e;
-            --secondary-background-color: #2d2d2d;
-            --text-color: #f5f5f5;
-            --border-color: #6a6a6a;
-        }
-        
         .main {
-            background-color: var(--background-color);
-            color: var(--text-color);
+            background-color: #1e1e1e;
+            color: #f5f5f5;
         }
-        
         .stButton>button {
-            background-color: var(--secondary-background-color) !important;
-            color: var(--text-color) !important;
-            border: 1px solid var(--border-color) !important;
-            transition: all 0.3s ease;
+            background-color: #4a4a4a !important;
+            color: white !important;
+            border: 1px solid #6a6a6a !important;
         }
-        
-        .stButton>button:hover {
-            background-color: var(--primary-color) !important;
-            transform: translateY(-2px);
-        }
-        
         .metric-card {
-            background-color: var(--secondary-background-color);
+            background-color: #2d2d2d;
             padding: 1rem;
             border-radius: 0.5rem;
             margin-bottom: 1rem;
-            border-left: 4px solid var(--primary-color);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .stTextInput>div>div>input {
-            background-color: var(--secondary-background-color);
-            color: var(--text-color);
-        }
-        
-        .stDataFrame {
-            background-color: var(--secondary-background-color);
+            border-left: 4px solid #4a90e2;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -151,37 +86,21 @@ def apply_light_theme():
     """Apply light theme styling."""
     st.markdown("""
     <style>
-        :root {
-            --primary-color: #4a90e2;
-            --background-color: #f6f9fc;
-            --secondary-background-color: #ffffff;
-            --text-color: #333333;
-            --border-color: #e1e1e1;
-        }
-        
         .main {
-            background-color: var(--background-color);
+            background-color: #f6f9fc;
         }
-        
         .stButton>button {
             background: linear-gradient(90deg, #007cf0, #00dfd8) !important;
             color: white !important;
             border: none !important;
-            transition: all 0.3s ease;
         }
-        
-        .stButton>button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        
         .metric-card {
-            background-color: var(--secondary-background-color);
+            background-color: white;
             padding: 1rem;
             border-radius: 0.5rem;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             margin-bottom: 1rem;
-            border-left: 4px solid var(--primary-color);
+            border-left: 4px solid #4a90e2;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -313,52 +232,19 @@ def connect_to_google_sheets():
 # SESSION STATE MANAGEMENT
 # ====================
 def init_session_state():
+    """Initialize session state variables."""
     if "user" not in st.session_state:
         st.session_state.user = None
     if "row_index" not in st.session_state:
         st.session_state.row_index = None
-    if "persistent_login" not in st.session_state:
-        st.session_state.persistent_login = False
-
-def persist_session():
-    html_string = """
-    <script>
-    const storeState = (key, value) => {
-        localStorage.setItem(key, value);
-    }
-
-    if (typeof window !== 'undefined') {
-        if (%s) {
-            storeState('persistent_login', 'true');
-            storeState('username', '%s');
-        } else {
-            storeState('persistent_login', 'false');
-            localStorage.removeItem('username');
-        }
-    }
-    </script>
-    """ % ("true" if st.session_state.get("persistent_login", False) else "false",
-           st.session_state.get("user", ""))
-
-    html(html_string, height=0, width=0)
-
-def check_persistent_session():
-    js_code = """
-    <script>
-    const persistentLogin = localStorage.getItem('persistent_login') === 'true';
-    const username = localStorage.getItem('username');
-    if (persistentLogin && username) {
-        const streamlitDoc = window.parent.document;
-        const input = streamlitDoc.querySelector('input[data-testid="stTextInput"]');
-        if (input) {
-            input.value = username;
-            const event = new Event('input', { bubbles: true });
-            input.dispatchEvent(event);
-        }
-    }
-    </script>
-    """
-html(js_code,height=0)
+    if "avatar_uploaded" not in st.session_state:
+        st.session_state.avatar_uploaded = False
+    if "last_action" not in st.session_state:
+        st.session_state.last_action = None
+    if "break_started" not in st.session_state:
+        st.session_state.break_started = False
+    if "break_ended" not in st.session_state:
+        st.session_state.break_ended = False
 
 # ====================
 # SIDEBAR COMPONENTS
@@ -379,15 +265,14 @@ def render_avatar_section():
         if avatar_path.exists():
             st.image(str(avatar_path), width=100, caption=f"Welcome {st.session_state.user}")
 
-        new_avatar = st.file_uploader("Update Avatar", type=["jpg", "jpeg", "png"], key="avatar_uploader")
+        new_avatar = st.file_uploader("Update Avatar", type=["jpg", "jpeg", "png"])
         if new_avatar:
             with open(avatar_path, "wb") as f:
                 f.write(new_avatar.read())
             st.success("Avatar updated!")
             st.session_state.avatar_uploaded = True
-            st.rerun()
     else:
-        uploaded_avatar = st.file_uploader("Upload Avatar (optional)", type=["jpg", "jpeg", "png"], key="temp_avatar")
+        uploaded_avatar = st.file_uploader("Upload Avatar (optional)", type=["jpg", "jpeg", "png"])
         if uploaded_avatar:
             temp_path = AVATAR_DIR / "temp_avatar.png"
             with open(temp_path, "wb") as f:
@@ -398,31 +283,22 @@ def render_login_section():
     """Handle login/logout functionality."""
     st.markdown("---")
     if st.session_state.user:
-        st.session_state.persistent_login = st.checkbox(
-            "Keep me logged in", 
-            value=st.session_state.get("persistent_login", False),
-            key="persistent_login_checkbox"
-        )
-        persist_session()
-        
-        if st.button("🚪 Logout", key="logout_button"):
+        if st.button("🚪 Logout"):
             st.session_state.user = None
             st.session_state.row_index = None
             st.session_state.break_started = False
             st.session_state.break_ended = False
             st.session_state.last_action = None
-            st.session_state.persistent_login = False
-            persist_session()
             st.rerun()
     else:
         st.markdown("### Login")
-        username = st.text_input("👤 Username", key="username_input")
-        password = st.text_input("🔒 Password", type="password", key="password_input")
+        username = st.text_input("👤 Username")
+        password = st.text_input("🔒 Password", type="password")
 
         col1, col2 = st.columns(2)
-        if col1.button("Login", key="login_button"):
+        if col1.button("Login"):
             handle_login(username, password)
-        if col2.button("Register", key="register_button"):
+        if col2.button("Register"):
             handle_registration(username, password)
 
 def handle_login(username, password):
@@ -442,7 +318,6 @@ def handle_login(username, password):
         st.error("Invalid credentials.")
     else:
         st.session_state.user = username
-        st.session_state.persistent_login = st.session_state.get("persistent_login", False)
         _, sheet2 = connect_to_google_sheets()
         if sheet2 is None:
             return
@@ -579,7 +454,7 @@ def render_employee_directory(df):
     """Render employee directory table."""
     st.subheader("👥 Employee Directory")
     if not df.empty:
-        st.dataframe(df, use_container_width=True, height=400)
+        st.dataframe(df, use_container_width=True)
     else:
         st.warning("No employee data available")
 
@@ -598,7 +473,7 @@ def render_admin_analytics(df):
             try:
                 # Convert work time to minutes for plotting
                 df['Work Minutes'] = df['Total Work Time'].apply(
-                    lambda x: int(x.split(':')[0]) * 60 + int(x.split(':')[1]) if x and ':' in x else 0
+                    lambda x: int(x.split(':')[0]) * 60 + int(x.split(':')[1]) if x else 0
                 )
                 
                 bar_fig = px.bar(
@@ -608,11 +483,6 @@ def render_admin_analytics(df):
                     title="Work Duration per Employee (Minutes)",
                     color="Status",
                     height=400,
-                )
-                bar_fig.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#333333' if not st.session_state.get("dark_mode", False) else '#f5f5f5')
                 )
                 st.plotly_chart(bar_fig, use_container_width=True)
             except Exception as e:
@@ -629,11 +499,6 @@ def render_admin_analytics(df):
                     title="Work Completion Status",
                     height=400,
                 )
-                pie_fig.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#333333' if not st.session_state.get("dark_mode", False) else '#f5f5f5')
-                )
                 st.plotly_chart(pie_fig, use_container_width=True)
         except Exception as e:
             st.error(f"Failed to create status distribution chart: {str(e)}")
@@ -649,7 +514,7 @@ def render_reporting_tools(sheet2):
     with btn_col:
         st.write("")
         st.write("")
-        if st.button("✉️ Email Report", key="email_report_button"):
+        if st.button("✉️ Email Report"):
             if not email_to or "@" not in email_to:
                 st.warning("Please enter a valid email address")
             else:
@@ -660,7 +525,7 @@ def render_reporting_tools(sheet2):
                     else:
                         st.error("Failed to send report")
 
-    if st.button("📥 Export as CSV", key="export_csv_button"):
+    if st.button("📥 Export as CSV"):
         with st.spinner("Exporting data..."):
             csv_file = export_to_csv(sheet2)
             if csv_file:
@@ -671,7 +536,6 @@ def render_reporting_tools(sheet2):
                         data=f,
                         file_name=csv_file,
                         mime="text/csv",
-                        key="download_csv_button"
                     )
 
 def render_employee_dashboard():
@@ -737,7 +601,7 @@ def render_time_tracking_controls(sheet2, row):
     action_col1, action_col2, action_col3 = st.columns(3)
 
     with action_col1:
-        if st.button("☕ Start Break", key="start_break_button"):
+        if st.button("☕ Start Break"):
             if st.session_state.row_index is None:
                 st.error("No valid row index found")
                 return
@@ -760,14 +624,14 @@ def render_time_tracking_controls(sheet2, row):
                     st.success(f"Break started at {now}")
                     
                     # Force a rerun to update the display
-                    st.rerun()
+                    st.experimental_rerun()
                 
             except Exception as e:
                 st.error(f"Failed to start break: {str(e)}")
                 st.session_state.break_started = False
 
     with action_col2:
-        if st.button("🔙 End Break", key="end_break_button"):
+        if st.button("🔙 End Break"):
             if len(row) <= 4 or not row[3]:
                 st.error("No break started")
                 return
@@ -795,14 +659,14 @@ def render_time_tracking_controls(sheet2, row):
                     st.success(f"Break ended. Duration: {format_duration(duration)}")
                     
                     # Force rerun
-                    st.rerun()
+                    st.experimental_rerun()
                 
             except Exception as e:
                 st.error(f"Error ending break: {str(e)}")
                 st.session_state.break_ended = False
 
     with action_col3:
-        if st.button("🔒 Logout", key="logout_button_main"):
+        if st.button("🔒 Logout"):
             if len(row) <= 1 or not row[1]:
                 st.error("No login time recorded")
                 return
@@ -840,8 +704,6 @@ def render_time_tracking_controls(sheet2, row):
                     st.session_state.break_started = False
                     st.session_state.break_ended = False
                     st.session_state.last_action = None
-                    st.session_state.persistent_login = False
-                    persist_session()
                     
                     # Small delay
                     time.sleep(1.5)
@@ -850,7 +712,7 @@ def render_time_tracking_controls(sheet2, row):
                     st.success(f"Logged out. Worked: {total_str}")
                     
                     # Force rerun
-                    st.rerun()
+                    st.experimental_rerun()
                 
             except Exception as e:
                 st.error(f"Logout error: {str(e)}")
@@ -880,33 +742,14 @@ def render_landing_page():
 # MAIN APP EXECUTION
 # ====================
 def main():
+    """Main application entry point."""
     try:
+        setup_page()
         init_session_state()
-        check_persistent_session()
-
-        if st.session_state.user:
-            st.write(f"Welcome back, {st.session_state.user}!")
-            if st.button("Logout"):
-                st.session_state.user = None
-                st.session_state.row_index = None
-                st.session_state.persistent_login = False
-                persist_session()
-                st.experimental_rerun()
-        else:
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            keep_logged_in = st.checkbox("Keep me logged in")
-
-            if st.button("Login"):
-                if username == "admin" and password == "admin":
-                    st.session_state.user = username
-                    st.session_state.persistent_login = keep_logged_in
-                    persist_session()
-                    st.experimental_rerun()
-                else:
-                    st.error("Invalid credentials")
+        render_sidebar()
+        render_main_content()
     except Exception as e:
-        st.error(f"App error: {e}")
+        st.error(f"Application error: {str(e)}")
 
 if __name__ == "__main__":
     main()
