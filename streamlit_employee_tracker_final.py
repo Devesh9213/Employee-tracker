@@ -959,51 +959,68 @@ def render_time_tracking_controls(sheet2, row):
                 st.session_state.break_ended = False
 
     with action_col3:
-        if st.button("🔒 Logout", use_container_width=True):
-            if len(row) <= 1 or not row[1]:
-                st.error("No login time recorded")
-                return
+        if st.button("🔒 Logout", use_container_width=True, key="logout_btn"):
+            st.session_state.logout_confirmation = True
+            
+        if st.session_state.get('logout_confirmation'):
+            st.warning("Are you sure you want to logout?")
+            col1, col2 = st.columns(2)
+            
+            if col1.button("✅ Yes, Logout", use_container_width=True):
+                try:
+                    if len(row) <= 1 or not row[1]:
+                        st.error("No login time recorded")
+                        return
 
-            try:
-                login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
-                logout_time = datetime.datetime.now()
-                
-                with st.spinner("Processing logout..."):
-                    sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
-
-                    break_mins = 0
-                    if len(row) > 5 and row[5]:
-                        try:
-                            h, m = map(int, row[5].split(":"))
-                            break_mins = h * 60 + m
-                        except:
-                            break_mins = 0
-
-                    total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
-                    total_str = format_duration(total_mins)
+                    login_time = datetime.datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S")
+                    logout_time = datetime.datetime.now()
                     
-                    sheet2.update_cell(st.session_state.row_index, 7, total_str)
-                    status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
-                    sheet2.update_cell(st.session_state.row_index, 8, status)
+                    with st.spinner("Processing logout..."):
+                        # Update logout time (column 3)
+                        sheet2.update_cell(st.session_state.row_index, 3, logout_time.strftime("%Y-%m-%d %H:%M:%S"))
 
-                    st.session_state.user = None
-                    st.session_state.row_index = None
-                    st.session_state.break_started = False
-                    st.session_state.break_ended = False
-                    st.session_state.last_action = None
-                    
-                    time.sleep(1.5)
-                    st.success(f"Logged out successfully. Worked: {total_str}")
-                    time.sleep(1.5)
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Logout error: {str(e)}")
+                        # Calculate break duration
+                        break_mins = 0
+                        if len(row) > 5 and row[5]:
+                            try:
+                                h, m = map(int, row[5].split(":"))
+                                break_mins = h * 60 + m
+                            except:
+                                break_mins = 0
+
+                        # Calculate total work time
+                        total_mins = (logout_time - login_time).total_seconds() / 60 - break_mins
+                        total_str = format_duration(total_mins)
+                        
+                        # Update work time and status
+                        sheet2.update_cell(st.session_state.row_index, 7, total_str)
+                        status = evaluate_status(row[5] if len(row) > 5 else "", total_str)
+                        sheet2.update_cell(st.session_state.row_index, 8, status)
+
+                        # Clear session state
+                        st.session_state.user = None
+                        st.session_state.row_index = None
+                        st.session_state.break_started = False
+                        st.session_state.break_ended = False
+                        st.session_state.last_action = None
+                        st.session_state.logout_confirmation = False
+                        
+                        time.sleep(1.5)
+                        st.success("Logged out successfully!")
+                        time.sleep(1.5)
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Logout error: {str(e)}")
+            
+            if col2.button("❌ Cancel", use_container_width=True):
+                st.session_state.logout_confirmation = False
+                st.rerun()
 
 def render_landing_page():
     """Render the landing page for non-logged in users."""
     st.markdown("""
     <div class="landing-header">
-        <h1>🌟 PixsEdit Employee Tracker</h1>
+        <h1> PixsEdit Employee Tracker</h1>
         <p>An elegant solution for tracking work hours, breaks, and productivity with beautiful visualizations</p>
     </div>
     """, unsafe_allow_html=True)
