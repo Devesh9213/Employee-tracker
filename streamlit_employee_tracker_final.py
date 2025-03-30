@@ -26,28 +26,11 @@ SESSION_TIMEOUT_MIN = 30  # Inactivity timeout in minutes
 # CONFIGURATION
 # ====================
 def load_config() -> Optional[Dict]:
-    """Load configuration from secrets and environment with enhanced error handling."""
+    """Load configuration from secrets and environment."""
     try:
-        SCOPES = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        
-        # Validate secrets exist
-        required_secrets = ["GOOGLE_CREDENTIALS", "SPREADSHEET_ID", "EMAIL_ADDRESS", "EMAIL_PASSWORD"]
-        for secret in required_secrets:
-            if secret not in st.secrets:
-                raise ValueError(f"Missing required secret: {secret}")
-        
+        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
+                 "https://www.googleapis.com/auth/drive"]
         creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-        
-        # Validate credential fields
-        required_creds = ["type", "project_id", "private_key_id", 
-                         "private_key", "client_email", "client_id"]
-        for field in required_creds:
-            if field not in creds_dict:
-                raise ValueError(f"Missing credential field: {field}")
-        
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
         client = gspread.authorize(creds)
 
@@ -59,37 +42,40 @@ def load_config() -> Optional[Dict]:
             "AVATAR_DIR": Path("avatars"),
             "SESSION_SECRET": st.secrets.get("SESSION_SECRET", "default-secret-key")
         }
-    except json.JSONDecodeError as e:
-        st.error(f"Invalid JSON in credentials: {str(e)}")
     except Exception as e:
         st.error(f"Configuration error: {str(e)}")
-    return None
+        st.stop()
+        return None
 
 config = load_config()
-if config is None:
-    st.stop()
-
 AVATAR_DIR = config["AVATAR_DIR"]
-AVATAR_DIR.mkdir(exist_ok=True, parents=True)
+AVATAR_DIR.mkdir(exist_ok=True)
 
 # ====================
-# COOKIE MANAGEMENT (FIXED VERSION)
+# COOKIE MANAGEMENT (FIXED)
 # ====================
 def set_cookie(name: str, value: str, days: int = COOKIE_EXPIRY_DAYS) -> None:
     """Set a persistent secure cookie in the browser."""
     expires = datetime.datetime.now() + datetime.timedelta(days=days)
     expires_str = expires.strftime("%a, %d-%b-%Y %H:%M:%S GMT")
-    secure_attr = "Secure; " if not st._is_running_with_streamlit else ""
+    
+    # Use Secure attribute in production (when not running locally)
+    secure_attr = "Secure; " if not os.getenv('IS_LOCAL', False) else ""
     
     js = f"""
     <script>
-    window.parent.document.cookie = "{name}={value}; expires={expires_str}; path=/; {secure_attr}SameSite=Lax";
+    if (window.parent.document) {{
+        window.parent.document.cookie = "{name}={value}; expires={expires_str}; path=/; {secure_attr}SameSite=Lax";
+    }}
     </script>
     """
     html(js)
 
 def get_cookie(name: str) -> Optional[str]:
-    """Get a cookie value if it exists using DOM manipulation."""
+    """Get a cookie value if it exists."""
+    # Create a unique key for this cookie request
+    cookie_key = f"cookie_{name}_{int(time.time())}"
+    
     js = f"""
     <script>
     function getCookie(name) {{
@@ -99,69 +85,40 @@ def get_cookie(name: str) -> Optional[str]:
     }}
     const cookieValue = getCookie("{name}");
     if (cookieValue) {{
-        window.parent.document.body.setAttribute('data-{name}', cookieValue);
+        // Store the value in Streamlit's session state
+        window.parent.document.dispatchEvent(new CustomEvent('setCookie', {{
+            detail: {{
+                key: '{cookie_key}',
+                value: cookieValue
+            }}
+        }}));
     }}
     </script>
     """
     html(js)
     
-    # We need to use a different approach to get the value back to Python
-    # This is a workaround since we can't directly return values from JS to Python
-    time.sleep(0.1)  # Small delay to allow JS to execute
-    if f'cookie_{name}' in st.session_state:
-        return st.session_state[f'cookie_{name}']
-    return None
-
-def delete_cookie(name: str) -> None:
-    """Delete a cookie by setting expiration in the past."""
-    js = f"""
-    <script>
-    window.parent.document.cookie = "{name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    </script>
-    """
-    html(js)
-
-def get_cookie(name: str) -> Optional[str]:
-    """Get a cookie value if it exists using DOM manipulation."""
-    js = f"""
-    <script>
-    function getCookie(name) {{
-        const value = `; ${document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-    }}
-    const cookieValue = getCookie("{name}");
-    if (cookieValue) {{
-        window.parent.document.querySelector('body').setAttribute('data-{name}', cookieValue);
-    }}
-    </script>
-    """
-    html(js)
+    # Wait briefly for the JavaScript to execute
+    time.sleep(0.3)
     
-    # Get the value from the DOM attribute we set
-    js_get_attr = f"""
-    <script>
-    const val = window.parent.document.querySelector('body').getAttribute('data-{name}');
-    window.parent.document.querySelector('body').removeAttribute('data-{name}');
-    </script>
-    """
-    result = html(js_get_attr, height=0)
-    return st.session_state.get(f'cookie_{name}')
+    # Check if the cookie value was stored in session state
+    return st.session_state.get(cookie_key)
 
 def delete_cookie(name: str) -> None:
     """Delete a cookie by setting expiration in the past."""
     js = f"""
     <script>
-    document.cookie = "{name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    if (window.parent.document) {{
+        window.parent.document.cookie = "{name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    }}
     </script>
     """
     html(js)
 
 # ====================
-# SESSION MANAGEMENT
+# SESSION STATE MANAGEMENT
 # ====================
-def init_session_state() -> None:
-    """Initialize and validate session state variables."""
+def init_session_state():
+    """Initialize session state variables."""
     defaults = {
         'user': None,
         'row_index': None,
@@ -219,68 +176,39 @@ def verify_persistent_login():
             st.session_state.persistent_login = False
             st.rerun()
 
+# ====================
+# AUTHENTICATION
+# ====================
 def check_persistent_login() -> None:
     """Check for valid login cookies and restore session if found."""
     if st.session_state.user:
         return
         
-    # Use JavaScript to set cookie values in session state
-    js = """
-    <script>
-    function getCookie(name) {
-        const value = `; ${window.parent.document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-    }
-    const username = getCookie("username");
-    const authToken = getCookie("auth_token");
+    username = get_cookie("username")
+    auth_token = get_cookie("auth_token")
     
-    if (username && authToken) {
-        window.parent.document.body.setAttribute('data-username', username);
-        window.parent.document.body.setAttribute('data-auth-token', authToken);
-    }
-    </script>
-    """
-    html(js)
-    
-    # Small delay to allow JS to execute
-    time.sleep(0.3)
-    
-    # Now try to get the values from the DOM
-    js_get = """
-    <script>
-    const username = window.parent.document.body.getAttribute('data-username');
-    const authToken = window.parent.document.body.getAttribute('data-auth-token');
-    </script>
-    """
-    result = html(js_get, height=0)
-    
-    # Alternative approach using session state
-    if 'cookie_username' in st.session_state and 'cookie_auth_token' in st.session_state:
-        username = st.session_state.cookie_username
-        auth_token = st.session_state.cookie_auth_token
-        
-        if username and auth_token:
-            try:
-                sheet1, _ = connect_to_google_sheets()
-                if sheet1:
-                    users = sheet1.get_all_values()[1:]  # Skip header
-                    user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
+    if username and auth_token:
+        try:
+            sheet1, _ = connect_to_google_sheets()
+            if sheet1:
+                users = sheet1.get_all_values()[1:]  # Skip header
+                user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
+                
+                if username in user_dict:
+                    # Hash with salt from config
+                    salted_pass = config["SESSION_SECRET"] + user_dict[username]
+                    hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
                     
-                    if username in user_dict:
-                        # Hash with salt from config
-                        salted_pass = config["SESSION_SECRET"] + user_dict[username]
-                        hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
-                        
-                        if hashed_pass == auth_token:
-                            st.session_state.user = username
-                            st.session_state.persistent_login = True
-                            st.session_state.credentials_verified = True
-                            st.session_state.login_time = datetime.datetime.now()
-                            st.rerun()
-            except Exception as e:
-                st.error(f"Login verification failed: {str(e)}")
-                clear_auth_cookies()
+                    if hashed_pass == auth_token:
+                        st.session_state.user = username
+                        st.session_state.persistent_login = True
+                        st.session_state.credentials_verified = True
+                        st.session_state.login_time = datetime.datetime.now()
+                        st.rerun()
+        except Exception as e:
+            st.error(f"Login verification failed: {str(e)}")
+            clear_auth_cookies()
+
 def clear_auth_cookies() -> None:
     """Clear authentication cookies."""
     delete_cookie("username")
@@ -759,12 +687,6 @@ def handle_login(username, password):
         # Set secure cookies
         salted_pass = config["SESSION_SECRET"] + password
         hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
-        
-        # Store in session state as fallback
-        st.session_state.cookie_username = username
-        st.session_state.cookie_auth_token = hashed_pass
-        
-        # Set cookies via JavaScript
         set_cookie("username", username)
         set_cookie("auth_token", hashed_pass)
         
@@ -772,7 +694,23 @@ def handle_login(username, password):
         if sheet2 is None:
             return
 
-        # Rest of the login logic...
+        # Find existing row or create new one
+        rows = sheet2.get_all_values()
+        st.session_state.row_index = None
+        
+        for i, row in enumerate(rows[1:]):  # Skip header
+            if row and row[0] == username:
+                st.session_state.row_index = i + 2  # +1 for header, +1 for 0-based index
+                break
+
+        if username != "admin" and st.session_state.row_index is None:
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            sheet2.append_row([username, now, "", "", "", "", "", ""])
+            st.session_state.row_index = len(sheet2.get_all_values())
+
+        st.success(f"Welcome back, {username}!")
+        time.sleep(1)
+        st.rerun()
 
 def handle_logout():
     """Handle the logout process."""
@@ -1251,7 +1189,7 @@ def render_landing_page():
 # MAIN APP EXECUTION
 # ====================
 def main():
-    """Main application entry point with enhanced session handling."""
+    """Main application entry point."""
     try:
         setup_page()
         
@@ -1267,7 +1205,17 @@ def main():
             render_main_content()
     except Exception as e:
         st.error(f"Application error: {str(e)}")
-        st.stop()
 
 if __name__ == "__main__":
+    # Add the JavaScript event listener for cookie handling
+    html("""
+    <script>
+    document.addEventListener('setCookie', function(e) {
+        const {key, value} = e.detail;
+        // Store the cookie value in session storage temporarily
+        sessionStorage.setItem(key, value);
+    });
+    </script>
+    """)
+    
     main()
