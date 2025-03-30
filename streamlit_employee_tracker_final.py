@@ -219,39 +219,68 @@ def verify_persistent_login():
             st.session_state.persistent_login = False
             st.rerun()
 
-# ====================
-# AUTHENTICATION
-# ====================
 def check_persistent_login() -> None:
     """Check for valid login cookies and restore session if found."""
     if st.session_state.user:
         return
         
-    username = get_cookie("username")
-    auth_token = get_cookie("auth_token")
+    # Use JavaScript to set cookie values in session state
+    js = """
+    <script>
+    function getCookie(name) {
+        const value = `; ${window.parent.document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+    const username = getCookie("username");
+    const authToken = getCookie("auth_token");
     
-    if username and auth_token:
-        try:
-            sheet1, _ = connect_to_google_sheets()
-            if sheet1:
-                users = sheet1.get_all_values()[1:]  # Skip header
-                user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
-                
-                if username in user_dict:
-                    # Hash with salt from config
-                    salted_pass = config["SESSION_SECRET"] + user_dict[username]
-                    hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
+    if (username && authToken) {
+        window.parent.document.body.setAttribute('data-username', username);
+        window.parent.document.body.setAttribute('data-auth-token', authToken);
+    }
+    </script>
+    """
+    html(js)
+    
+    # Small delay to allow JS to execute
+    time.sleep(0.3)
+    
+    # Now try to get the values from the DOM
+    js_get = """
+    <script>
+    const username = window.parent.document.body.getAttribute('data-username');
+    const authToken = window.parent.document.body.getAttribute('data-auth-token');
+    </script>
+    """
+    result = html(js_get, height=0)
+    
+    # Alternative approach using session state
+    if 'cookie_username' in st.session_state and 'cookie_auth_token' in st.session_state:
+        username = st.session_state.cookie_username
+        auth_token = st.session_state.cookie_auth_token
+        
+        if username and auth_token:
+            try:
+                sheet1, _ = connect_to_google_sheets()
+                if sheet1:
+                    users = sheet1.get_all_values()[1:]  # Skip header
+                    user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
                     
-                    if hashed_pass == auth_token:
-                        st.session_state.user = username
-                        st.session_state.persistent_login = True
-                        st.session_state.credentials_verified = True
-                        st.session_state.login_time = datetime.datetime.now()
-                        st.rerun()
-        except Exception as e:
-            st.error(f"Login verification failed: {str(e)}")
-            clear_auth_cookies()
-
+                    if username in user_dict:
+                        # Hash with salt from config
+                        salted_pass = config["SESSION_SECRET"] + user_dict[username]
+                        hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
+                        
+                        if hashed_pass == auth_token:
+                            st.session_state.user = username
+                            st.session_state.persistent_login = True
+                            st.session_state.credentials_verified = True
+                            st.session_state.login_time = datetime.datetime.now()
+                            st.rerun()
+            except Exception as e:
+                st.error(f"Login verification failed: {str(e)}")
+                clear_auth_cookies()
 def clear_auth_cookies() -> None:
     """Clear authentication cookies."""
     delete_cookie("username")
