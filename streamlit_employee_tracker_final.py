@@ -73,7 +73,7 @@ AVATAR_DIR = config["AVATAR_DIR"]
 AVATAR_DIR.mkdir(exist_ok=True, parents=True)
 
 # ====================
-# COOKIE MANAGEMENT
+# COOKIE MANAGEMENT (FIXED VERSION)
 # ====================
 def set_cookie(name: str, value: str, days: int = COOKIE_EXPIRY_DAYS) -> None:
     """Set a persistent secure cookie in the browser."""
@@ -83,7 +83,40 @@ def set_cookie(name: str, value: str, days: int = COOKIE_EXPIRY_DAYS) -> None:
     
     js = f"""
     <script>
-    document.cookie = "{name}={value}; expires={expires_str}; path=/; {secure_attr}SameSite=Lax";
+    window.parent.document.cookie = "{name}={value}; expires={expires_str}; path=/; {secure_attr}SameSite=Lax";
+    </script>
+    """
+    html(js)
+
+def get_cookie(name: str) -> Optional[str]:
+    """Get a cookie value if it exists using DOM manipulation."""
+    js = f"""
+    <script>
+    function getCookie(name) {{
+        const value = `; ${window.parent.document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }}
+    const cookieValue = getCookie("{name}");
+    if (cookieValue) {{
+        window.parent.document.body.setAttribute('data-{name}', cookieValue);
+    }}
+    </script>
+    """
+    html(js)
+    
+    # We need to use a different approach to get the value back to Python
+    # This is a workaround since we can't directly return values from JS to Python
+    time.sleep(0.1)  # Small delay to allow JS to execute
+    if f'cookie_{name}' in st.session_state:
+        return st.session_state[f'cookie_{name}']
+    return None
+
+def delete_cookie(name: str) -> None:
+    """Delete a cookie by setting expiration in the past."""
+    js = f"""
+    <script>
+    window.parent.document.cookie = "{name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     </script>
     """
     html(js)
