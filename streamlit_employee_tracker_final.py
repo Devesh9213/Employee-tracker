@@ -12,6 +12,7 @@ import pandas as pd
 import plotly.express as px
 import time
 import base64
+from streamlit.components.v1 import html
 
 # ====================
 # CONFIGURATION
@@ -45,42 +46,44 @@ AVATAR_DIR.mkdir(exist_ok=True)
 # SESSION STATE MANAGEMENT
 # ====================
 def init_session_state():
-    """Initialize session state variables with persistent login support."""
-    if "initialized" not in st.session_state:
-        st.session_state.initialized = True
+    """Initialize session state variables."""
+    if 'user' not in st.session_state:
         st.session_state.user = None
+    if 'row_index' not in st.session_state:
         st.session_state.row_index = None
+    if 'persistent_login' not in st.session_state:
         st.session_state.persistent_login = False
+    if 'avatar_uploaded' not in st.session_state:
         st.session_state.avatar_uploaded = False
+    if 'last_action' not in st.session_state:
         st.session_state.last_action = None
+    if 'break_started' not in st.session_state:
         st.session_state.break_started = False
+    if 'break_ended' not in st.session_state:
         st.session_state.break_ended = False
+    if 'logout_confirmation' not in st.session_state:
         st.session_state.logout_confirmation = False
-        st.session_state.login_verified = False
+    if 'credentials_verified' not in st.session_state:
+        st.session_state.credentials_verified = False
 
-def check_persistent_login():
-    """Check for persistent login on page refresh."""
-    if st.session_state.get('persistent_login') and st.session_state.user and not st.session_state.login_verified:
+def verify_persistent_login():
+    """Verify login credentials if not already verified."""
+    if st.session_state.persistent_login and not st.session_state.credentials_verified:
         try:
             sheet1, _ = connect_to_google_sheets()
             if sheet1:
                 users = sheet1.get_all_values()[1:]  # Skip header
                 user_exists = any(user[0] == st.session_state.user for user in users if len(user) >= 2)
-                if user_exists:
-                    st.session_state.login_verified = True
-                    return True
-                else:
+                if not user_exists:
                     st.session_state.user = None
                     st.session_state.persistent_login = False
                     st.rerun()
+                st.session_state.credentials_verified = True
         except Exception as e:
             st.error(f"Login verification failed: {str(e)}")
             st.session_state.user = None
             st.session_state.persistent_login = False
             st.rerun()
-    elif st.session_state.get('persistent_login') and st.session_state.login_verified:
-        return True
-    return False
 
 # ====================
 # PAGE SETUP
@@ -96,9 +99,7 @@ def setup_page():
     apply_cream_theme()
     
     init_session_state()
-    
-    if not check_persistent_login():
-        st.session_state.login_verified = False
+    verify_persistent_login()
 
 def apply_cream_theme():
     """Apply elegant cream white theme with soft accents."""
@@ -551,7 +552,7 @@ def handle_login(username, password):
     else:
         st.session_state.user = username
         st.session_state.persistent_login = True
-        st.session_state.login_verified = True
+        st.session_state.credentials_verified = True
         
         _, sheet2 = connect_to_google_sheets()
         if sheet2 is None:
@@ -618,7 +619,7 @@ def handle_logout():
     st.session_state.break_ended = False
     st.session_state.last_action = None
     st.session_state.logout_confirmation = False
-    st.session_state.login_verified = False
+    st.session_state.credentials_verified = False
     
     st.success("Logged out successfully!")
     time.sleep(1)
