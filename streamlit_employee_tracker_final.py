@@ -13,16 +13,41 @@ import plotly.express as px
 import time
 import base64
 from streamlit.components.v1 import html
+import hashlib
+from typing import Optional, Dict, Tuple
+
+# ====================
+# CONSTANTS
+# ====================
+COOKIE_EXPIRY_DAYS = 7  # Session persists for 7 days
+SESSION_TIMEOUT_MIN = 30  # Inactivity timeout in minutes
 
 # ====================
 # CONFIGURATION
 # ====================
-def load_config():
-    """Load configuration from secrets and environment."""
+def load_config() -> Optional[Dict]:
+    """Load configuration from secrets and environment with enhanced error handling."""
     try:
-        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
-                 "https://www.googleapis.com/auth/drive"]
+        SCOPES = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        
+        # Validate secrets exist
+        required_secrets = ["GOOGLE_CREDENTIALS", "SPREADSHEET_ID", "EMAIL_ADDRESS", "EMAIL_PASSWORD"]
+        for secret in required_secrets:
+            if secret not in st.secrets:
+                raise ValueError(f"Missing required secret: {secret}")
+        
         creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+        
+        # Validate credential fields
+        required_creds = ["type", "project_id", "private_key_id", 
+                         "private_key", "client_email", "client_id"]
+        for field in required_creds:
+            if field not in creds_dict:
+                raise ValueError(f"Missing credential field: {field}")
+        
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPES)
         client = gspread.authorize(creds)
 
@@ -32,39 +57,115 @@ def load_config():
             "EMAIL_PASSWORD": st.secrets["EMAIL_PASSWORD"],
             "client": client,
             "AVATAR_DIR": Path("avatars"),
+            "SESSION_SECRET": st.secrets.get("SESSION_SECRET", "default-secret-key")
         }
+    except json.JSONDecodeError as e:
+        st.error(f"Invalid JSON in credentials: {str(e)}")
     except Exception as e:
         st.error(f"Configuration error: {str(e)}")
-        st.stop()
-        return None
+    return None
 
 config = load_config()
+if config is None:
+    st.stop()
+
 AVATAR_DIR = config["AVATAR_DIR"]
-AVATAR_DIR.mkdir(exist_ok=True)
+AVATAR_DIR.mkdir(exist_ok=True, parents=True)
 
 # ====================
-# SESSION STATE MANAGEMENT
+# COOKIE MANAGEMENT
 # ====================
-def init_session_state():
-    """Initialize session state variables."""
-    if 'user' not in st.session_state:
-        st.session_state.user = None
-    if 'row_index' not in st.session_state:
-        st.session_state.row_index = None
-    if 'persistent_login' not in st.session_state:
-        st.session_state.persistent_login = False
-    if 'avatar_uploaded' not in st.session_state:
-        st.session_state.avatar_uploaded = False
-    if 'last_action' not in st.session_state:
-        st.session_state.last_action = None
-    if 'break_started' not in st.session_state:
-        st.session_state.break_started = False
-    if 'break_ended' not in st.session_state:
-        st.session_state.break_ended = False
-    if 'logout_confirmation' not in st.session_state:
-        st.session_state.logout_confirmation = False
-    if 'credentials_verified' not in st.session_state:
-        st.session_state.credentials_verified = False
+def set_cookie(name: str, value: str, days: int = COOKIE_EXPIRY_DAYS) -> None:
+    """Set a persistent secure cookie in the browser."""
+    expires = datetime.datetime.now() + datetime.timedelta(days=days)
+    expires_str = expires.strftime("%a, %d-%b-%Y %H:%M:%S GMT")
+    secure_attr = "Secure; " if not st._is_running_with_streamlit else ""
+    
+    js = f"""
+    <script>
+    document.cookie = "{name}={value}; expires={expires_str}; path=/; {secure_attr}SameSite=Lax";
+    </script>
+    """
+    html(js)
+
+def get_cookie(name: str) -> Optional[str]:
+    """Get a cookie value if it exists using DOM manipulation."""
+    js = f"""
+    <script>
+    function getCookie(name) {{
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }}
+    const cookieValue = getCookie("{name}");
+    if (cookieValue) {{
+        window.parent.document.querySelector('body').setAttribute('data-{name}', cookieValue);
+    }}
+    </script>
+    """
+    html(js)
+    
+    # Get the value from the DOM attribute we set
+    js_get_attr = f"""
+    <script>
+    const val = window.parent.document.querySelector('body').getAttribute('data-{name}');
+    window.parent.document.querySelector('body').removeAttribute('data-{name}');
+    </script>
+    """
+    result = html(js_get_attr, height=0)
+    return st.session_state.get(f'cookie_{name}')
+
+def delete_cookie(name: str) -> None:
+    """Delete a cookie by setting expiration in the past."""
+    js = f"""
+    <script>
+    document.cookie = "{name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    </script>
+    """
+    html(js)
+
+# ====================
+# SESSION MANAGEMENT
+# ====================
+def init_session_state() -> None:
+    """Initialize and validate session state variables."""
+    defaults = {
+        'user': None,
+        'row_index': None,
+        'persistent_login': False,
+        'avatar_uploaded': False,
+        'last_action': None,
+        'break_started': False,
+        'break_ended': False,
+        'logout_confirmation': False,
+        'credentials_verified': False,
+        'last_activity': datetime.datetime.now(),
+        'login_time': None
+    }
+    
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+def check_session_timeout() -> bool:
+    """Check if session has timed out due to inactivity."""
+    if not st.session_state.user:
+        return False
+        
+    if 'last_activity' not in st.session_state:
+        st.session_state.last_activity = datetime.datetime.now()
+        return False
+        
+    inactive_min = (datetime.datetime.now() - st.session_state.last_activity).total_seconds() / 60
+    if inactive_min > SESSION_TIMEOUT_MIN:
+        handle_logout()
+        st.warning(f"Session timed out after {SESSION_TIMEOUT_MIN} minutes of inactivity")
+        return True
+    return False
+
+def update_activity() -> None:
+    """Update last activity timestamp."""
+    st.session_state.last_activity = datetime.datetime.now()
 
 def verify_persistent_login():
     """Verify login credentials if not already verified."""
@@ -86,6 +187,44 @@ def verify_persistent_login():
             st.rerun()
 
 # ====================
+# AUTHENTICATION
+# ====================
+def check_persistent_login() -> None:
+    """Check for valid login cookies and restore session if found."""
+    if st.session_state.user:
+        return
+        
+    username = get_cookie("username")
+    auth_token = get_cookie("auth_token")
+    
+    if username and auth_token:
+        try:
+            sheet1, _ = connect_to_google_sheets()
+            if sheet1:
+                users = sheet1.get_all_values()[1:]  # Skip header
+                user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
+                
+                if username in user_dict:
+                    # Hash with salt from config
+                    salted_pass = config["SESSION_SECRET"] + user_dict[username]
+                    hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
+                    
+                    if hashed_pass == auth_token:
+                        st.session_state.user = username
+                        st.session_state.persistent_login = True
+                        st.session_state.credentials_verified = True
+                        st.session_state.login_time = datetime.datetime.now()
+                        st.rerun()
+        except Exception as e:
+            st.error(f"Login verification failed: {str(e)}")
+            clear_auth_cookies()
+
+def clear_auth_cookies() -> None:
+    """Clear authentication cookies."""
+    delete_cookie("username")
+    delete_cookie("auth_token")
+
+# ====================
 # PAGE SETUP
 # ====================
 def setup_page():
@@ -99,6 +238,7 @@ def setup_page():
     apply_cream_theme()
     
     init_session_state()
+    check_persistent_login()
     verify_persistent_login()
 
 def apply_cream_theme():
@@ -554,6 +694,12 @@ def handle_login(username, password):
         st.session_state.persistent_login = True
         st.session_state.credentials_verified = True
         
+        # Set secure cookies
+        salted_pass = config["SESSION_SECRET"] + password
+        hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
+        set_cookie("username", username)
+        set_cookie("auth_token", hashed_pass)
+        
         _, sheet2 = connect_to_google_sheets()
         if sheet2 is None:
             return
@@ -611,7 +757,8 @@ def handle_logout():
     except Exception as e:
         st.error(f"Error saving logout data: {str(e)}")
     
-    # Clear all session state
+    # Clear all session state and cookies
+    clear_auth_cookies()
     st.session_state.user = None
     st.session_state.row_index = None
     st.session_state.persistent_login = False
@@ -1052,15 +1199,23 @@ def render_landing_page():
 # MAIN APP EXECUTION
 # ====================
 def main():
-    """Main application entry point."""
+    """Main application entry point with enhanced session handling."""
     try:
         setup_page()
+        
+        # Check for session timeout on each interaction
+        if check_session_timeout():
+            return
+            
+        # Update activity on each run
+        update_activity()
         
         if st.session_state.get('persistent_login') or not st.session_state.user:
             render_sidebar()
             render_main_content()
     except Exception as e:
         st.error(f"Application error: {str(e)}")
+        st.stop()
 
 if __name__ == "__main__":
     main()
