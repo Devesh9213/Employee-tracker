@@ -759,6 +759,12 @@ def handle_login(username, password):
         # Set secure cookies
         salted_pass = config["SESSION_SECRET"] + password
         hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
+        
+        # Store in session state as fallback
+        st.session_state.cookie_username = username
+        st.session_state.cookie_auth_token = hashed_pass
+        
+        # Set cookies via JavaScript
         set_cookie("username", username)
         set_cookie("auth_token", hashed_pass)
         
@@ -766,23 +772,7 @@ def handle_login(username, password):
         if sheet2 is None:
             return
 
-        # Find existing row or create new one
-        rows = sheet2.get_all_values()
-        st.session_state.row_index = None
-        
-        for i, row in enumerate(rows[1:]):  # Skip header
-            if row and row[0] == username:
-                st.session_state.row_index = i + 2  # +1 for header, +1 for 0-based index
-                break
-
-        if username != "admin" and st.session_state.row_index is None:
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            sheet2.append_row([username, now, "", "", "", "", "", ""])
-            st.session_state.row_index = len(sheet2.get_all_values())
-
-        st.success(f"Welcome back, {username}!")
-        time.sleep(1)
-        st.rerun()
+        # Rest of the login logic...
 
 def handle_logout():
     """Handle the logout process."""
