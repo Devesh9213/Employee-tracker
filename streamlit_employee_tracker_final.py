@@ -1,23 +1,19 @@
+
+Copy
 # ====================
-# PAGE SETUP
+# PAGE SETUP (MUST BE FIRST)
 # ====================
-def setup_page():
-    """Configure page settings and theme."""
-    st.set_page_config(
-        page_title="PixsEdit Employee Tracker",
-        layout="wide",
-        page_icon="🕒",
-        initial_sidebar_state="expanded"
-    )
-    apply_cream_theme()
-    
-    init_session_state()
-    check_persistent_login()
-    verify_persistent_login()
+st.set_page_config(
+    page_title="PixsEdit Employee Tracker",
+    layout="wide",
+    page_icon="🕒",
+    initial_sidebar_state="expanded"
+)
+
+# THEN IMPORT OTHER DEPENDENCIES
 import os
 import datetime
 import csv
-import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import smtplib
