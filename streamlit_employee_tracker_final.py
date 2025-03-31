@@ -221,14 +221,7 @@ def clear_auth_cookies() -> None:
 # ====================
 # PAGE SETUP
 # ====================
-def setup_page():
-    """Configure page settings and theme."""
-    st.set_page_config(
-        page_title="PixsEdit Employee Tracker",
-        layout="wide",
-        page_icon="🕒",
-        initial_sidebar_state="expanded"
-    )
+
     apply_cream_theme()
     
     init_session_state()
