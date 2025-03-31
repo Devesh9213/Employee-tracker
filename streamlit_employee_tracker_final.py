@@ -54,72 +54,40 @@ AVATAR_DIR.mkdir(exist_ok=True)
 # ====================
 # COOKIE MANAGEMENT (FIXED)
 # ====================
-def set_cookie(name: str, value: str, days: int = COOKIE_EXPIRY_DAYS) -> None:
-    """Set a persistent secure cookie in the browser."""
-    expires = datetime.datetime.now() + datetime.timedelta(days=days)
-    expires_str = expires.strftime("%a, %d-%b-%Y %H:%M:%S GMT")
-    
-    # Use Secure attribute in production (when not running locally)
-    secure_attr = "Secure; " if not os.getenv('IS_LOCAL', False) else ""
-    
-    js = f"""
-    <script>
-    if (window.parent.document) {{
-        window.parent.document.cookie = "{name}={value}; expires={expires_str}; path=/; {secure_attr}SameSite=Lax";
-    }}
-    </script>
-    """
-    html(js)
-
+# ====================
+# COOKIE MANAGEMENT (SIMPLIFIED)
+# ====================
 def get_cookie(name: str) -> Optional[str]:
-    """Get a cookie value if it exists."""
-    # Create a unique key for this cookie request
-    cookie_key = f"cookie_{name}_{int(time.time())}"
+    """Simplified cookie getter using query params as fallback"""
+    if name in st.session_state:
+        return st.session_state[name]
     
-    js = f"""
-    <script>
-    function getCookie(name) {{
-        const value = `; ${window.parent.document.cookie}`;
-        const parts = value.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-    }}
-    const cookieValue = getCookie("{name}");
-    if (cookieValue) {{
-        // Store the value in Streamlit's session state
-        window.parent.document.dispatchEvent(new CustomEvent('setCookie', {{
-            detail: {{
-                key: '{cookie_key}',
-                value: cookieValue
-            }}
-        }}));
-    }}
-    </script>
-    """
-    html(js)
-    
-    # Wait briefly for the JavaScript to execute
-    time.sleep(0.3)
-    
-    # Check if the cookie value was stored in session state
-    return st.session_state.get(cookie_key)
+    # Check URL params as fallback
+    params = st.experimental_get_query_params()
+    return params.get(name, [None])[0]
+
+def set_cookie(name: str, value: str, days: int = COOKIE_EXPIRY_DAYS) -> None:
+    """Simplified cookie setter using session state"""
+    st.session_state[name] = value
+    # Also set in URL params for persistence
+    st.experimental_set_query_params(**{name: value})
 
 def delete_cookie(name: str) -> None:
-    """Delete a cookie by setting expiration in the past."""
-    js = f"""
-    <script>
-    if (window.parent.document) {{
-        window.parent.document.cookie = "{name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-    }}
-    </script>
-    """
-    html(js)
+    """Remove cookie from session state and URL"""
+    if name in st.session_state:
+        del st.session_state[name]
+    # Clear from URL params
+    params = st.experimental_get_query_params()
+    if name in params:
+        new_params = {k: v for k, v in params.items() if k != name}
+        st.experimental_set_query_params(**new_params)
 
 # ====================
-# SESSION STATE MANAGEMENT
+# SESSION STATE MANAGEMENT (IMPROVED)
 # ====================
 def init_session_state():
-    """Initialize session state variables."""
-    defaults = {
+    """Initialize all required session state variables"""
+    required_states = {
         'user': None,
         'row_index': None,
         'persistent_login': False,
@@ -130,12 +98,51 @@ def init_session_state():
         'logout_confirmation': False,
         'credentials_verified': False,
         'last_activity': datetime.datetime.now(),
-        'login_time': None
+        'login_time': None,
+        'google_sheets_initialized': False
     }
     
-    for key, value in defaults.items():
+    for key, default in required_states.items():
         if key not in st.session_state:
-            st.session_state[key] = value
+            st.session_state[key] = default
+
+# ====================
+# AUTHENTICATION (MORE ROBUST)
+# ====================
+def check_persistent_login() -> None:
+    """Check for valid login credentials"""
+    if st.session_state.user:
+        return
+        
+    username = get_cookie("username")
+    auth_token = get_cookie("auth_token")
+    
+    if username and auth_token:
+        try:
+            sheet1, _ = connect_to_google_sheets()
+            if not sheet1:
+                return
+                
+            users = sheet1.get_all_values()[1:]  # Skip header
+            user_dict = {u[0]: u[1] for u in users if len(u) >= 2}
+            
+            if username in user_dict:
+                salted_pass = config["SESSION_SECRET"] + user_dict[username]
+                hashed_pass = hashlib.sha256(salted_pass.encode()).hexdigest()
+                
+                if hashed_pass == auth_token:
+                    st.session_state.update({
+                        'user': username,
+                        'persistent_login': True,
+                        'credentials_verified': True,
+                        'login_time': datetime.datetime.now()
+                    })
+                    st.rerun()
+                    
+        except Exception as e:
+            st.error(f"Login verification failed: {e}")
+            clear_auth_cookies()
+            st.session_state.persistent_login = False
 
 def check_session_timeout() -> bool:
     """Check if session has timed out due to inactivity."""
