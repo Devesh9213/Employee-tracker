@@ -106,6 +106,26 @@ def init_session_state():
         if key not in st.session_state:
             st.session_state[key] = default
 
+def check_session_timeout() -> bool:
+    """Check if session has timed out due to inactivity."""
+    if not st.session_state.user:
+        return False
+        
+    if 'last_activity' not in st.session_state:
+        st.session_state.last_activity = datetime.datetime.now()
+        return False
+        
+    inactive_min = (datetime.datetime.now() - st.session_state.last_activity).total_seconds() / 60
+    if inactive_min > SESSION_TIMEOUT_MIN:
+        handle_logout()
+        st.warning(f"Session timed out after {SESSION_TIMEOUT_MIN} minutes of inactivity")
+        return True
+    return False
+
+def update_activity() -> None:
+    """Update last activity timestamp."""
+    st.session_state.last_activity = datetime.datetime.now()
+
 # ====================
 # AUTHENTICATION (MORE ROBUST)
 # ====================
@@ -143,45 +163,6 @@ def check_persistent_login() -> None:
             st.error(f"Login verification failed: {e}")
             clear_auth_cookies()
             st.session_state.persistent_login = False
-
-def check_session_timeout() -> bool:
-    """Check if session has timed out due to inactivity."""
-    if not st.session_state.user:
-        return False
-        
-    if 'last_activity' not in st.session_state:
-        st.session_state.last_activity = datetime.datetime.now()
-        return False
-        
-    inactive_min = (datetime.datetime.now() - st.session_state.last_activity).total_seconds() / 60
-    if inactive_min > SESSION_TIMEOUT_MIN:
-        handle_logout()
-        st.warning(f"Session timed out after {SESSION_TIMEOUT_MIN} minutes of inactivity")
-        return True
-    return False
-
-def update_activity() -> None:
-    """Update last activity timestamp."""
-    st.session_state.last_activity = datetime.datetime.now()
-
-def verify_persistent_login():
-    """Verify login credentials if not already verified."""
-    if st.session_state.persistent_login and not st.session_state.credentials_verified:
-        try:
-            sheet1, _ = connect_to_google_sheets()
-            if sheet1:
-                users = sheet1.get_all_values()[1:]  # Skip header
-                user_exists = any(user[0] == st.session_state.user for user in users if len(user) >= 2)
-                if not user_exists:
-                    st.session_state.user = None
-                    st.session_state.persistent_login = False
-                    st.rerun()
-                st.session_state.credentials_verified = True
-        except Exception as e:
-            st.error(f"Login verification failed: {str(e)}")
-            st.session_state.user = None
-            st.session_state.persistent_login = False
-            st.rerun()
 
 # ====================
 # AUTHENTICATION
