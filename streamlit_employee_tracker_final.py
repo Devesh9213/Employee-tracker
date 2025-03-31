@@ -9,6 +9,14 @@ st.set_page_config(
     page_icon="🕒",
     initial_sidebar_state="expanded"
 )
+def setup_page():
+    """Configure page settings and theme."""
+    # Removed set_page_config from here since it's now at top
+    
+    apply_cream_theme()
+    init_session_state()
+    check_persistent_login()
+    verify_persistent_login()
 
 # THEN IMPORT OTHER DEPENDENCIES
 import os
