@@ -539,4 +539,4 @@ def render_login_section():
             handle_registration(username, password)
 
 def handle_login(username, password):
-    """Process login attempt with
+    "Process login attempt with"
