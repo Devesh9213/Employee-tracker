@@ -10,29 +10,25 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      -- name: Upload Artifact
-         uses: actions/upload-artifact@v4
-         with:
-         name: my-artifact
-         path: ./path/to/artifact
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-
-      - name: ⚙️ Setup Node.js
+      - name: 🛠 Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 18
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: npm install
 
-      - name: 🔧 Build the app
+      - name: Rebuild native modules
+        run: npx electron-rebuild
+
+      - name: Build Electron App for Windows
         run: npm run build
 
-      - name: 📤 Upload Windows Installer
-        uses: actions/upload-artifact@v3
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: |
-            dist/*.exe
-            dist/*.msi
-            dist/*.zip
+          path: dist/
